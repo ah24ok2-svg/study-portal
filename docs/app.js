@@ -572,8 +572,6 @@
     $("add-page").hidden = isPdf;
     $("pdf-preview").hidden = !isPdf;
     $("editing-title").textContent = isPdf ? "PDFを確認" : "ページを確認";
-    // 答案は縦長の紙なので、横長の写真はスマホを横に構えて撮った可能性が高い
-    $("landscape-notice").hidden = isPdf || !state.submit.pages.some(function (p) { return p.width > p.height; });
 
     if (isPdf) {
       $("pdf-original-name").textContent = state.submit.pdfFile.name;
