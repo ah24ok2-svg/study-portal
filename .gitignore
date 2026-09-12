@@ -1,0 +1,49 @@
+# === 認証情報 ===
+# clasp の認証情報。.clasprc.json には Google アカウントのトークンが入る
+.clasp.json
+.clasprc.json
+
+# 環境変数
+.env
+.env.*
+!.env.example
+
+# === 生徒データ ===
+# このリポジトリは公開されている。実データが1件でも混入したら事故になる
+samples/
+test-data/
+*.pdf
+*.heic
+*.HEIC
+
+# 画像はアプリのアイコンだけ許可し、それ以外は弾く
+*.jpg
+*.jpeg
+*.png
+!docs/icons/*.png
+
+# === 秘密情報のメモ ===
+tokens.txt
+tokens.*
+secrets.*
+*.local.js
+*.local.json
+
+# === 依存とビルド ===
+node_modules/
+package-lock.json
+dist/
+build/
+
+# === OS / エディタ ===
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*~
+
+# === ログ ===
+*.log
+npm-debug.log*
