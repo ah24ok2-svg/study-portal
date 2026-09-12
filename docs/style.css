@@ -330,7 +330,7 @@ textarea.input { resize: none; line-height: 1.5; }
 }
 .icon-button:disabled { opacity: .3; cursor: default; }
 .icon-button.danger { color: var(--danger); background: var(--danger-soft); }
-.page-actions { display: flex; gap: 8px; margin-top: 8px; }
+.page-remove { margin-top: 8px; }
 
 .add-page {
   display: flex; align-items: center; justify-content: center; gap: 8px;

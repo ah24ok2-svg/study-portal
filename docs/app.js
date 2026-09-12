@@ -39,7 +39,6 @@
       mode: null,     // images | pdf
       pages: [],
       pdfFile: null,
-      rotating: false,
       doneTimer: null
     }
   };
@@ -438,26 +437,12 @@
    * 元の 3〜5MB のままだと3ページで上限20MBに達するため、この処理は省略できない
    */
   async function processImage(file) {
-    const rendered = await renderPageImage(file, 0);
-    return Object.assign({
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-      // 回転は常にこの縮小直後の画像から作り直す。回転結果から再回転すると JPEG の劣化が重なるため
-      source: rendered.blob,
-      rotation: 0
-    }, rendered);
-  }
-
-  /** source を rotation 度（時計回り、90の倍数）回して、長辺2000pxのJPEGとサムネイルにする */
-  async function renderPageImage(source, rotation) {
     // imageOrientation を指定しないと、縦構えで撮った答案が90度倒れる
-    const bitmap = await createImageBitmap(source, { imageOrientation: "from-image" });
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     try {
       const scale = Math.min(1, MAX_EDGE_PX / Math.max(bitmap.width, bitmap.height));
-      const drawW = Math.round(bitmap.width * scale);
-      const drawH = Math.round(bitmap.height * scale);
-      const sideways = rotation === 90 || rotation === 270;
-      const width = sideways ? drawH : drawW;
-      const height = sideways ? drawW : drawH;
+      const width = Math.round(bitmap.width * scale);
+      const height = Math.round(bitmap.height * scale);
 
       const canvas = document.createElement("canvas");
       canvas.width = width;
@@ -466,9 +451,7 @@
       // 透過PNGの背景が黒くならないように白で塗る
       ctx.fillStyle = "#fff";
       ctx.fillRect(0, 0, width, height);
-      ctx.translate(width / 2, height / 2);
-      ctx.rotate(rotation * Math.PI / 180);
-      ctx.drawImage(bitmap, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.drawImage(bitmap, 0, 0, width, height);
       const blob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
 
       const thumbScale = Math.min(1, THUMB_EDGE_PX / Math.max(width, height));
@@ -482,7 +465,13 @@
       canvas.width = canvas.height = 0;
       thumb.width = thumb.height = 0;
 
-      return { blob: blob, width: width, height: height, thumbUrl: URL.createObjectURL(thumbBlob) };
+      return {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        blob: blob,
+        width: width,
+        height: height,
+        thumbUrl: URL.createObjectURL(thumbBlob)
+      };
     } finally {
       if (bitmap.close) bitmap.close();
     }
@@ -617,12 +606,8 @@
         );
         // 削除ボタン（ti-x 相当）は誤タップを避けるため並べ替えボタンと離して置く
         const remove = pageButton((index + 1) + "ページ目を削除", iconSvg("M18 6L6 18M6 6l12 12"), false, function () { removePage(index); });
-        remove.classList.add("danger");
-        const rotate = pageButton((index + 1) + "ページ目を右に90度回転", iconSvg("M21 12a9 9 0 1 1-9-9c2.5 0 4.9 1 6.7 2.7L21 8M21 3v5h-5"), state.submit.rotating, function () { rotatePage(index); });
-        const actions = document.createElement("div");
-        actions.className = "page-actions";
-        actions.append(rotate, remove);
-        info.appendChild(actions);
+        remove.classList.add("danger", "page-remove");
+        info.appendChild(remove);
 
         li.append(img, info, controls);
         list.appendChild(li);
@@ -640,26 +625,6 @@
     btn.disabled = disabled;
     btn.addEventListener("click", onClick);
     return btn;
-  }
-
-  async function rotatePage(index) {
-    if (state.submit.rotating) return;
-    const page = state.submit.pages[index];
-    state.submit.rotating = true;
-    renderPages();
-    try {
-      const rotation = (page.rotation + 90) % 360;
-      const rendered = await renderPageImage(page.source, rotation);
-      URL.revokeObjectURL(page.thumbUrl);
-      Object.assign(page, rendered, { rotation: rotation });
-      showError($("add-page-error"), "");
-    } catch (err) {
-      console.warn(err);
-      showError($("add-page-error"), "回転できませんでした。もう一度お試しください");
-    } finally {
-      state.submit.rotating = false;
-      renderPages();
-    }
   }
 
   function movePage(index, delta) {
@@ -801,8 +766,7 @@
 
   async function onSubmit() {
     const s = state.submit;
-    // 回転の途中でPDFを作ると、差し替え前の画像が混ざる
-    if (s.status === "uploading" || s.rotating) return;
+    if (s.status === "uploading") return;
     hideUploadError();
 
     const title = sanitizeTitle($("title-input").value) || "答案";
