@@ -267,6 +267,23 @@ textarea.input { resize: none; line-height: 1.5; }
 .big-button-primary { background: var(--primary); color: var(--on-primary); min-height: 88px; font-size: 20px; }
 .big-button-secondary { background: var(--surface); color: var(--primary-ink); box-shadow: inset 0 0 0 1.5px var(--primary); min-height: 64px; }
 
+.shoot-hint {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 14px; padding: 12px 14px;
+  background: var(--primary-soft); color: var(--primary-ink);
+  border-radius: var(--radius);
+}
+.shoot-hint svg { flex: none; }
+.shoot-hint p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink); }
+.shoot-hint strong { color: var(--primary-ink); }
+
+.notice {
+  margin: 0 0 12px; padding: 10px 12px;
+  background: var(--primary-soft); color: var(--ink);
+  border-left: 4px solid var(--primary);
+  border-radius: 10px; font-size: 14px;
+}
+
 .select-loading { margin: 12px 0 0; text-align: center; font-size: 14px; color: var(--ink-soft); }
 
 .section-title { font-size: 15px; margin: 32px 0 8px; color: var(--ink-soft); }

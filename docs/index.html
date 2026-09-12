@@ -70,6 +70,10 @@
             <span>ファイルを選ぶ</span>
           </label>
         </div>
+        <div class="shoot-hint">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="28" height="28"><rect x="7" y="2.5" width="10" height="19" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 18.5h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <p>スマホを<strong>縦向き</strong>に持って、<br><strong>1ページずつ</strong>撮影してください</p>
+        </div>
         <p id="select-error" class="inline-error" role="alert" hidden></p>
         <p id="select-loading" class="select-loading" hidden>画像を読み込んでいます…</p>
 
@@ -91,6 +95,8 @@
           <p id="upload-error-text"></p>
           <button id="retry-button" type="button" class="btn btn-primary">もう一度送る</button>
         </div>
+
+        <p id="landscape-notice" class="notice" hidden>横向きの写真があります。PDFでは答案が横に倒れて見えるので、スマホを縦に持って撮り直すのがおすすめです。</p>
 
         <ol id="page-list" class="page-list"></ol>
         <label id="add-page" class="add-page">
