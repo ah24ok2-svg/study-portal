@@ -6,6 +6,9 @@ const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const NOTE_MAX_LENGTH = 200;
 const FILE_NAME_MAX_LENGTH = 100;
 const SUBMISSIONS_LIMIT = 100;
+const VIEW_MAX_BYTES = 30 * 1024 * 1024;
+// 提出直後の Drive 側の更新（作成処理そのもの）を「書き込み」と誤判定しないための猶予
+const ANNOTATION_GRACE_MS = 2 * 60 * 1000;
 
 // MIMEタイプごとに許可する拡張子。クライアントの accept 属性は検証にならないのでここで判定する
 const ALLOWED_TYPES = {
@@ -44,7 +47,7 @@ function handleUpload(req) {
     getSheet(SHEET.SUBMISSIONS).appendRow([
       submissionId, student.studentId, file.getId(), fileName, input.mimeType, bytes.length, input.note, createdAt
     ]);
-    getSheet(SHEET.MESSAGES).appendRow([newId("msg_"), student.studentId, "student", messageBody, createdAt, true]);
+    getSheet(SHEET.MESSAGES).appendRow([newId("msg_"), student.studentId, "student", messageBody, createdAt, true, false]);
   });
 
   return ok({ submissionId: submissionId, fileName: fileName });
@@ -191,18 +194,88 @@ function ensureStudentFolder(student) {
 
 function handleGetSubmissions(req) {
   const student = authenticate(req.token);
+  const fileStates = readFolderFileStates(student.folderId);
   const items = readRows(SHEET.SUBMISSIONS)
     .filter(function (r) { return r.values[1] === student.studentId; })
     .map(function (r) {
+      const createdAt = toIso(r.values[7]) || "";
+      const state = describeSubmissionFile(fileStates, String(r.values[2]), createdAt);
       // Drive の URL や file_id は返さない。生徒に Drive へ直接アクセスさせない方針のため
       return {
         id: String(r.values[0]),
         fileName: String(r.values[3]),
         sizeBytes: Number(r.values[5]) || 0,
         note: String(r.values[6] || ""),
-        createdAt: toIso(r.values[7]) || ""
+        createdAt: createdAt,
+        available: state.available,
+        annotated: state.annotated
       };
     });
   items.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0; });
   return ok({ submissions: items.slice(0, SUBMISSIONS_LIMIT) });
+}
+
+/**
+ * 生徒フォルダ内のファイルの更新時刻をまとめて読む。
+ * 提出ごとに getFileById すると100件で数十秒かかるため、フォルダを1回走査する
+ */
+function readFolderFileStates(folderId) {
+  const states = {};
+  if (!folderId) return states;
+  let folder;
+  try {
+    folder = DriveApp.getFolderById(folderId);
+  } catch (_) {
+    return states;
+  }
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const file = files.next();
+    states[file.getId()] = { updatedAt: file.getLastUpdated().getTime(), trashed: file.isTrashed() };
+  }
+  return states;
+}
+
+function describeSubmissionFile(fileStates, fileId, createdAtIso) {
+  if (!Object.prototype.hasOwnProperty.call(fileStates, fileId)) {
+    // 講師がファイルを別フォルダへ移した場合でも見つけられるよう、フォルダに無いものだけ個別に引く
+    try {
+      const file = DriveApp.getFileById(fileId);
+      fileStates[fileId] = { updatedAt: file.getLastUpdated().getTime(), trashed: file.isTrashed() };
+    } catch (_) {
+      fileStates[fileId] = null;
+    }
+  }
+  const state = fileStates[fileId];
+  if (!state || state.trashed) return { available: false, annotated: false };
+  const createdMs = createdAtIso ? new Date(createdAtIso).getTime() : 0;
+  return { available: true, annotated: createdMs > 0 && state.updatedAt - createdMs > ANNOTATION_GRACE_MS };
+}
+
+/** 講師が書き込んだ最新版を含め、Drive にある今のファイルを本人にだけ返す（spec §13.4） */
+function handleGetSubmissionFile(req) {
+  const student = authenticate(req.token);
+  if (typeof req.submissionId !== "string") throw new AppError("VALIDATION_ERROR", "提出物が見つかりません");
+  const row = readRows(SHEET.SUBMISSIONS).find(function (r) {
+    // 他の生徒の submissionId を指定されても、存在するかどうかを区別できない応答にする
+    return r.values[0] === req.submissionId && r.values[1] === student.studentId;
+  });
+  if (!row) throw new AppError("VALIDATION_ERROR", "提出物が見つかりません");
+
+  let file;
+  try {
+    file = DriveApp.getFileById(String(row.values[2]));
+  } catch (_) {
+    throw new AppError("VALIDATION_ERROR", "この提出物は先生の側で削除されています");
+  }
+  if (file.isTrashed()) throw new AppError("VALIDATION_ERROR", "この提出物は先生の側で削除されています");
+  if (file.getSize() > VIEW_MAX_BYTES) throw new AppError("FILE_TOO_LARGE", "ファイルが大きすぎて表示できません");
+
+  const blob = file.getBlob();
+  return ok({
+    fileName: file.getName(),
+    mimeType: blob.getContentType(),
+    dataBase64: Utilities.base64Encode(blob.getBytes()),
+    updatedAt: file.getLastUpdated().toISOString()
+  });
 }

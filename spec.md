@@ -623,3 +623,82 @@ function json(obj) {
 
 `login` 以外のハンドラは、冒頭で必ず `const student = authenticate(req.token);` を呼び、
 以降は `student.studentId` / `student.folderId` のみを使うこと。
+
+---
+
+## 13. v2: 講師アプリと添削の閲覧
+
+v1 の「やらないこと」のうち、講師用画面と添削済みファイルの閲覧を実装する。
+プッシュ通知は §13.6 に仕様だけ定め、Firebase の準備ができてから実装する。
+
+### 13.1 添削の流れ（返却アップロードはしない）
+1. 生徒が提出 → 生徒フォルダに PDF が保存される（v1 のまま）
+2. 講師は iPad の PDF ビューアで Drive 上の同じファイルを開き、書き込んで**上書き保存**する
+3. 生徒アプリで提出履歴を開くと、Drive にある最新の状態（書き込み入り）を表示する
+
+- Drive の共有設定は v1 と同じく非公開のまま。ファイル本体は GAS 経由で本人にだけ渡す
+- 提出時刻より2分以上後に Drive 側で更新されていれば「先生が書き込みました」と表示する
+
+### 13.2 講師の認証
+合言葉ではなく講師本人の Google アカウントで認証する。講師トークンが漏れると全生徒のデータが見えるため。
+
+1. 講師アプリが Google の OAuth 画面へリダイレクトする（`response_type=id_token`, `scope=openid email`, `nonce` 付き）
+2. 戻ってきた ID トークンと nonce を `tutorLogin` に送る
+3. GAS は `https://oauth2.googleapis.com/tokeninfo` で検証し、次をすべて満たすときだけ成功とする
+   - `aud` が Script Properties の `GOOGLE_CLIENT_ID` と一致
+   - `email` が `TUTOR_EMAIL` と一致し、`email_verified` が true
+   - `exp` が未来、`nonce` がリクエストの値と一致
+4. 成功したら 32 文字の講師セッショントークンを発行する。有効期限 30 日。
+   Script Properties に**ハッシュのみ**保存する（キー `tutor_session_{hash}`、値は失効時刻）
+5. 以降の講師 API はリクエストの `tutorToken` で認証する。生徒の `token` とは別フィールドにし、取り違えを防ぐ
+
+照合失敗は生徒ログインと同じ失敗カウンタに加算する（§3 の全体ロック対象）。
+
+### 13.3 データの変更
+`messages` シートに列を追加する。
+
+| 列 | 名前 | 型 | 説明 |
+|---|---|---|---|
+| G | read_by_tutor | boolean | 講師が既読にしたか。空欄は既読扱い（v1 の既存行のため） |
+
+Script Properties に追加する値:
+
+| キー | 内容 |
+|---|---|
+| `TUTOR_EMAIL` | 講師の Google アカウントのメールアドレス |
+| `GOOGLE_CLIENT_ID` | OAuth クライアント ID（ウェブアプリ） |
+
+### 13.4 API 追加
+
+**生徒向け**
+- `getSubmissions` のレスポンス各要素に `annotated`（boolean）と `available`（Drive にファイルがあるか）を追加
+- `getSubmissionFile` `{ token, submissionId }` → `{ fileName, mimeType, dataBase64, updatedAt }`
+  - 提出の `student_id` がトークンの生徒と一致しない場合は `VALIDATION_ERROR`（存在を明かさない）
+  - 30MB を超えるファイルは `FILE_TOO_LARGE`
+
+**講師向け**（すべて `tutorToken` 必須）
+- `tutorLogin` `{ idToken, nonce }` → `{ tutorToken, email, expiresAt }`
+- `tutorLogout` `{ tutorToken }`
+- `tutorListStudents` → `{ students: [{ studentId, name, unreadCount, lastActivityAt, lastMessage }] }`（`lastActivityAt` の新しい順）
+- `tutorGetThread` `{ studentId }` → `{ student, messages, submissions }`
+  - `messages` は直近 200 件、`submissions` は新しい順で `fileUrl`（Drive の閲覧 URL）と `annotated` を含む
+  - 取得時にその生徒からのメッセージを講師既読にする
+- `tutorSendMessage` `{ studentId, body }` → `{ id, createdAt }`（1000 文字以内）
+
+### 13.5 講師アプリの画面
+- 配置: `docs/tutor/`（公開 URL は `/study-portal/tutor/`）。生徒アプリとは別の PWA としてホーム画面に追加する
+- 幅 768px 以上（iPad）は左に生徒一覧、右に選択中の生徒の画面を並べる。スマホは一覧 → 詳細の画面遷移
+- 生徒の画面は「やりとり」「提出物」の切り替え
+  - やりとり: 生徒アプリと同じ吹き出し表示と返信欄
+  - 提出物: ファイル名・日時・コメント・「✏️ 書き込み済み」表示と「Driveで開く」ボタン
+- 30 秒ごとにポーリング（非表示中は停止）
+
+### 13.6 プッシュ通知（講師のみ・未実装）
+- Firebase Cloud Messaging を使う。生徒の `sendMessage` と `upload` の成功後に GAS から講師端末へ送る
+- 通知の送信失敗で生徒側の処理を失敗させない
+- iOS は 16.4 以降、講師アプリをホーム画面に追加した場合のみ受信できる
+
+### 13.7 生徒アプリの提出物ビューア
+- 提出履歴の各行をタップで開く。pdf.js（cdnjs、3.11.174）でページを縦に並べて表示する
+  - iOS のホーム画面アプリでは Blob URL の PDF を直接開けないため、アプリ内で描画する
+- 「保存・共有」ボタンで Web Share API に渡す（非対応端末はダウンロード）

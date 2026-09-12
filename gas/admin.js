@@ -21,13 +21,16 @@ function setup() {
     let sheet = ss.getSheetByName(name);
     if (!sheet) {
       sheet = ss.insertSheet(name);
-      sheet.getRange(1, 1, 1, HEADERS[name].length).setValues([HEADERS[name]]).setFontWeight("bold");
       sheet.setFrozenRows(1);
     }
+    // 列を追加したバージョンに上げたとき、既存シートのヘッダーも揃える。既存のデータ行には触らない
+    sheet.getRange(1, 1, 1, HEADERS[name].length).setValues([HEADERS[name]]).setFontWeight("bold");
   });
   // ROOT_FOLDER_ID と NOTIFY_EMAIL が設定されているかもここで確かめておく
   DriveApp.getFolderById(getProp("ROOT_FOLDER_ID"));
   getProp("NOTIFY_EMAIL");
+  getProp("TUTOR_EMAIL");
+  getProp("GOOGLE_CLIENT_ID");
   console.log("初期設定が完了しました");
 }
 

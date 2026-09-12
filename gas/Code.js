@@ -11,7 +11,7 @@ const SHEET = {
 
 const HEADERS = {
   students: ["student_id", "name", "name_slug", "token_hash", "folder_id", "active", "created_at"],
-  messages: ["message_id", "student_id", "sender", "body", "created_at", "read_by_student"],
+  messages: ["message_id", "student_id", "sender", "body", "created_at", "read_by_student", "read_by_tutor"],
   submissions: ["submission_id", "student_id", "file_id", "file_name", "mime_type", "size_bytes", "note", "created_at"]
 };
 
@@ -25,7 +25,13 @@ function doPost(e) {
       getMessages: handleGetMessages,
       sendMessage: handleSendMessage,
       upload: handleUpload,
-      getSubmissions: handleGetSubmissions
+      getSubmissions: handleGetSubmissions,
+      getSubmissionFile: handleGetSubmissionFile,
+      tutorLogin: handleTutorLogin,
+      tutorLogout: handleTutorLogout,
+      tutorListStudents: handleTutorListStudents,
+      tutorGetThread: handleTutorGetThread,
+      tutorSendMessage: handleTutorSendMessage
     };
     const handler = Object.prototype.hasOwnProperty.call(handlers, req.action) ? handlers[req.action] : null;
     if (!handler) return json(fail("VALIDATION_ERROR", "不正なリクエストです"));

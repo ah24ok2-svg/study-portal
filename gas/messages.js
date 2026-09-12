@@ -88,7 +88,8 @@ function appendMessage(studentId, sender, body) {
   const id = newId("msg_");
   const createdAt = nowIso();
   withLock(function () {
-    getSheet(SHEET.MESSAGES).appendRow([id, studentId, sender, body, createdAt, sender === "student"]);
+    // 自分が書いたメッセージは自分側では既読にしておく
+    getSheet(SHEET.MESSAGES).appendRow([id, studentId, sender, body, createdAt, sender === "student", sender === "tutor"]);
   });
   return { id: id, createdAt: createdAt };
 }

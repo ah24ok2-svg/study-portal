@@ -9,14 +9,15 @@
 ## 構成
 
 ```
-docs/    フロントエンド。GitHub Pages の配信元（素のHTML/CSS/JS、ビルドなし）
+docs/        生徒アプリ。GitHub Pages の配信元（素のHTML/CSS/JS、ビルドなし）
+docs/tutor/  講師アプリ（spec.md §13）
 gas/     Google Apps Script。clasp でデプロイする
 spec.md  仕様書
 ```
 
 - フロントは `docs/` に置く。GitHub Pages のブランチ配信はルートか `/docs` しか選べないため、名前を変えない
 - リポジトリは**公開**。GitHub Pages を無料プランで使うための必須条件
-- フレームワークは使わない。依存は jsPDF（CDN）のみ
+- フレームワークは使わない。依存は CDN の jsPDF と pdf.js のみ（講師のログインは Google の OAuth 画面へのリダイレクトで行い、SDK は読まない）
 
 ---
 
@@ -31,7 +32,7 @@ spec.md  仕様書
 - テスト用の実物の答案PDF・画像
 
 IDや秘密情報は GAS の Script Properties に置く。ソースに直書きしない。
-`docs/config.js` に入れてよいのは `GAS_URL` だけ。
+`docs/config.js` に入れてよいのは `GAS_URL` と `GOOGLE_CLIENT_ID`（公開前提の値）だけ。
 
 ---
 
@@ -79,7 +80,8 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 - エラーメッセージは生徒が読んで対処できる言葉にする。技術用語やスタックトレースを出さない
 - 生徒に見せる画面は幅375pxを基準にする
 - コメントは「なぜそうしたか」を書く。「何をしているか」はコードで読める
-- GAS側は `Code.js` に全部入れず、`auth.js` / `upload.js` / `messages.js` に分ける
+- GAS側は `Code.js` に全部入れず、`auth.js` / `upload.js` / `messages.js` / `tutor.js` に分ける
+- 講師 API は `authenticateTutor(req.tutorToken)` を必ず通す。生徒の `token` では講師 API を呼べないようにする
 
 ---
 
