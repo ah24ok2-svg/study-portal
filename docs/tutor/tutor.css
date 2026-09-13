@@ -18,6 +18,36 @@
 
 .tutor-layout { flex: 1; min-height: 0; display: flex; }
 
+.header-actions { display: flex; align-items: center; gap: 14px; }
+.header-icon { position: relative; width: 40px; height: 40px; background: transparent; color: var(--ink); }
+.push-dot {
+  position: absolute; top: 8px; right: 8px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #2f9e44; box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* ---------- 通知の設定 ---------- */
+
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 80;
+  display: grid; place-items: center;
+  padding: 20px;
+  background: rgba(40, 26, 16, .4);
+}
+.sheet {
+  width: 100%; max-width: 380px;
+  padding: 18px 20px 20px;
+  background: var(--surface); border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(40, 26, 16, .2);
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sheet-head h2 { margin: 0; font-size: 18px; }
+.sheet-head .icon-button { background: transparent; }
+.push-status { margin: 0 0 16px; font-size: 14px; color: var(--ink); }
+.sheet .inline-error { margin: 0 0 12px; }
+.sheet-actions { display: flex; flex-direction: column; gap: 10px; }
+.push-disable { margin: 4px auto 0; color: var(--danger); }
+
 /* ---------- 生徒一覧 ---------- */
 
 .student-pane {

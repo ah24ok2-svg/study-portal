@@ -31,7 +31,10 @@ function doPost(e) {
       tutorLogout: handleTutorLogout,
       tutorListStudents: handleTutorListStudents,
       tutorGetThread: handleTutorGetThread,
-      tutorSendMessage: handleTutorSendMessage
+      tutorSendMessage: handleTutorSendMessage,
+      tutorRegisterPush: handleTutorRegisterPush,
+      tutorUnregisterPush: handleTutorUnregisterPush,
+      tutorTestPush: handleTutorTestPush
     };
     const handler = Object.prototype.hasOwnProperty.call(handlers, req.action) ? handlers[req.action] : null;
     if (!handler) return json(fail("VALIDATION_ERROR", "不正なリクエストです"));

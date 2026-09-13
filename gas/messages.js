@@ -81,6 +81,7 @@ function handleSendMessage(req) {
     throw new AppError("VALIDATION_ERROR", "メッセージは" + MESSAGE_MAX_LENGTH + "文字以内で入力してください");
   }
   const saved = appendMessage(student.studentId, "student", body);
+  notifyTutorSafely({ title: student.name + "さん", body: body, studentId: student.studentId });
   return ok({ id: saved.id, createdAt: saved.createdAt });
 }
 

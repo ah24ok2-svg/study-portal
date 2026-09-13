@@ -50,6 +50,12 @@ function handleUpload(req) {
     getSheet(SHEET.MESSAGES).appendRow([newId("msg_"), student.studentId, "student", messageBody, createdAt, true, false]);
   });
 
+  notifyTutorSafely({
+    title: student.name + "さんが提出しました",
+    body: fileName + (input.pageCount ? "（" + input.pageCount + "ページ）" : ""),
+    studentId: student.studentId
+  });
+
   return ok({ submissionId: submissionId, fileName: fileName });
 }
 

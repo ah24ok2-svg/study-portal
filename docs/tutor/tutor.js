@@ -5,6 +5,8 @@
   const GAS_URL = CONFIG.GAS_URL;
   const AUTH_URL = CONFIG.GOOGLE_AUTH_URL || "https://accounts.google.com/o/oauth2/v2/auth";
   const TOKEN_KEY = "tutorapp.tutorToken";
+  const PUSH_TOKEN_KEY = "tutorapp.pushToken";
+  const FIREBASE_SDK_BASE = "https://www.gstatic.com/firebasejs/10.14.1/";
   const PENDING_KEY = "tutorapp.pendingLogin";
   const POLL_INTERVAL_MS = 30 * 1000;
   const TIME_ZONE = "Asia/Tokyo";
@@ -25,7 +27,9 @@
     thread: null,
     pollTimer: null,
     loadingList: false,
-    loadingThread: false
+    loadingThread: false,
+    // 通知から開いたときに、一覧の読み込み後に選ぶ生徒
+    pendingStudentId: new URLSearchParams(location.search).get("student")
   };
 
   function storageGet(key) {
@@ -159,6 +163,7 @@
   }
 
   function logout(message) {
+    storageRemove(PUSH_TOKEN_KEY);
     storageRemove(TOKEN_KEY);
     state.tutorToken = null;
     state.students = [];
@@ -173,6 +178,15 @@
     $("app-view").hidden = false;
     loadStudents();
     startPolling();
+    refreshPushToken();
+  }
+
+  function openPendingStudent() {
+    const id = state.pendingStudentId;
+    if (!id) return;
+    state.pendingStudentId = null;
+    history.replaceState(null, "", redirectUri());
+    if (state.students.some(function (s) { return s.studentId === id; })) selectStudent(id);
   }
 
   // ---------------------------------------------------------------------------
@@ -202,6 +216,7 @@
       state.students = data.students;
       showError($("students-error"), "");
       renderStudents();
+      openPendingStudent();
     } catch (err) {
       if (err.code !== "INVALID_TOKEN") showError($("students-error"), err.message);
     } finally {
@@ -446,6 +461,183 @@
   }
 
   // ---------------------------------------------------------------------------
+  // プッシュ通知（spec §13.6）
+
+  let messagingPromise = null;
+
+  function isIos() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function isStandalone() {
+    return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
+
+  function pushAvailability() {
+    if (!CONFIG.FIREBASE_CONFIG || !CONFIG.FIREBASE_VAPID_KEY) return "unconfigured";
+    // iOS は Safari のタブでは PushManager 自体が無い。ホーム画面に追加したアプリだけが通知を受け取れる
+    if (isIos() && !isStandalone()) return "ios-browser";
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return "unsupported";
+    if (Notification.permission === "denied") return "denied";
+    if (Notification.permission === "granted" && storageGet(PUSH_TOKEN_KEY)) return "enabled";
+    return "available";
+  }
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = function () { reject(new ApiError("NETWORK", TEXT.network)); };
+      document.head.appendChild(script);
+    });
+  }
+
+  /** Firebase SDK はトークン取得にしか使わないので、必要になったときだけ読み込む */
+  function getMessaging() {
+    if (!messagingPromise) {
+      messagingPromise = loadScript(FIREBASE_SDK_BASE + "firebase-app-compat.js")
+        .then(function () { return loadScript(FIREBASE_SDK_BASE + "firebase-messaging-compat.js"); })
+        .then(function () {
+          if (!window.firebase.apps.length) window.firebase.initializeApp(CONFIG.FIREBASE_CONFIG);
+          return window.firebase.messaging();
+        })
+        .catch(function (err) {
+          messagingPromise = null;
+          throw err;
+        });
+    }
+    return messagingPromise;
+  }
+
+  async function fetchFcmToken() {
+    const registration = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    const messaging = await getMessaging();
+    return messaging.getToken({ vapidKey: CONFIG.FIREBASE_VAPID_KEY, serviceWorkerRegistration: registration });
+  }
+
+  function deviceLabel() {
+    const ua = navigator.userAgent;
+    if (/iPad/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return "iPad";
+    if (/iPhone/.test(ua)) return "iPhone";
+    if (/Android/.test(ua)) return "Android";
+    if (/Mac/.test(ua)) return "Mac";
+    return "PC";
+  }
+
+  function renderPushPanel(message) {
+    const availability = pushAvailability();
+    const texts = {
+      unconfigured: "通知の設定がまだ終わっていません。",
+      "ios-browser": "iPhone・iPad では、Safari の共有ボタンから「ホーム画面に追加」したアプリで開くと通知を受け取れます。",
+      unsupported: "このブラウザは通知に対応していません。",
+      denied: "通知が拒否されています。端末の設定から、このアプリの通知をオンにしてください。",
+      enabled: "この端末で通知を受け取ります。生徒から提出やメッセージが届くとお知らせします。",
+      available: "生徒から提出やメッセージが届いたら、この端末にお知らせします。"
+    };
+    $("push-status").textContent = message || texts[availability];
+    $("push-enable").hidden = availability !== "available";
+    $("push-test").hidden = availability !== "enabled";
+    $("push-disable").hidden = availability !== "enabled";
+    $("push-dot").hidden = availability !== "enabled";
+  }
+
+  function openPushPanel() {
+    showError($("push-error"), "");
+    renderPushPanel();
+    $("push-panel").hidden = false;
+  }
+
+  function closePushPanel() {
+    $("push-panel").hidden = true;
+  }
+
+  async function enablePush() {
+    const button = $("push-enable");
+    showError($("push-error"), "");
+    // 許可ダイアログはタップの直後に出さないと iOS で無視されるので、他の await より先に呼ぶ
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      renderPushPanel();
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "設定しています…";
+    try {
+      const token = await fetchFcmToken();
+      await api("tutorRegisterPush", { fcmToken: token, label: deviceLabel() });
+      storageSet(PUSH_TOKEN_KEY, token);
+      renderPushPanel();
+    } catch (err) {
+      console.warn(err);
+      if (err.code !== "INVALID_TOKEN") showError($("push-error"), "通知の設定に失敗しました。通信状態を確認して、もう一度お試しください");
+    } finally {
+      button.disabled = false;
+      button.textContent = "この端末で通知を受け取る";
+    }
+  }
+
+  async function disablePush() {
+    const token = storageGet(PUSH_TOKEN_KEY);
+    storageRemove(PUSH_TOKEN_KEY);
+    renderPushPanel();
+    try {
+      if (token) await api("tutorUnregisterPush", { fcmToken: token });
+      const messaging = await getMessaging();
+      await messaging.deleteToken();
+    } catch (err) {
+      // 端末側の登録が残っても、サーバーから消えていれば通知は届かない
+      console.warn(err);
+    }
+  }
+
+  async function sendTestPush() {
+    const button = $("push-test");
+    button.disabled = true;
+    showError($("push-error"), "");
+    try {
+      const result = await api("tutorTestPush");
+      renderPushPanel(result.sent > 0
+        ? "テスト通知を送りました。数秒で届きます。"
+        : "送信できる端末がありませんでした。一度オフにして、もう一度オンにしてください。");
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("push-error"), err.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  /** FCM トークンは更新されることがあるので、開くたびに取り直して変わっていれば登録し直す */
+  async function refreshPushToken() {
+    if (pushAvailability() !== "enabled") {
+      renderPushPanel();
+      return;
+    }
+    renderPushPanel();
+    try {
+      const token = await fetchFcmToken();
+      if (token && token !== storageGet(PUSH_TOKEN_KEY)) {
+        await api("tutorRegisterPush", { fcmToken: token, label: deviceLabel() });
+        storageSet(PUSH_TOKEN_KEY, token);
+      }
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+
+  function onServiceWorkerMessage(event) {
+    const data = event.data || {};
+    if (data.type === "push") {
+      // アプリを開いている間に届いた通知は、画面もすぐ更新する
+      poll();
+    } else if (data.type === "open-student" && data.studentId) {
+      state.pendingStudentId = data.studentId;
+      loadStudents();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // ポーリング
 
   function poll() {
@@ -481,7 +673,12 @@
     $("login-button").addEventListener("click", startGoogleLogin);
     $("logout-button").addEventListener("click", async function () {
       if (!window.confirm("ログアウトしますか？")) return;
-      try { await api("tutorLogout"); } catch (_) { /* 失効済みでもローカルは消す */ }
+      const pushToken = storageGet(PUSH_TOKEN_KEY);
+      try {
+        // ログアウトした端末に生徒のメッセージが届き続けないよう、通知の登録も外す
+        if (pushToken) await api("tutorUnregisterPush", { fcmToken: pushToken });
+        await api("tutorLogout");
+      } catch (_) { /* 失効済みでもローカルは消す */ }
       logout();
     });
     $("back-button").addEventListener("click", backToList);
@@ -491,6 +688,14 @@
     $("composer").addEventListener("submit", onSend);
     $("composer-input").addEventListener("input", autoGrowComposer);
     document.addEventListener("visibilitychange", onVisibilityChange);
+
+    $("push-button").addEventListener("click", openPushPanel);
+    $("push-close").addEventListener("click", closePushPanel);
+    $("push-panel").addEventListener("click", function (e) { if (e.target === $("push-panel")) closePushPanel(); });
+    $("push-enable").addEventListener("click", enablePush);
+    $("push-disable").addEventListener("click", disablePush);
+    $("push-test").addEventListener("click", sendTestPush);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", onServiceWorkerMessage);
   }
 
   async function boot() {
