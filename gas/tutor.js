@@ -186,9 +186,7 @@ function handleTutorGetThread(req) {
         note: String(r.values[6] || ""),
         createdAt: createdAt,
         available: state.available,
-        annotated: state.annotated,
-        // 講師本人のファイルなので URL を渡してよい。生徒 API では絶対に返さない
-        fileUrl: "https://drive.google.com/file/d/" + encodeURIComponent(fileId) + "/view"
+        annotated: state.annotated
       };
     });
   submissions.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0; });

@@ -410,16 +410,6 @@
         info.appendChild(badge);
       }
       li.appendChild(info);
-
-      if (s.available) {
-        const open = document.createElement("a");
-        open.className = "btn btn-secondary open-drive";
-        open.href = s.fileUrl;
-        open.target = "_blank";
-        open.rel = "noopener";
-        open.textContent = "Driveで開く";
-        li.appendChild(open);
-      }
       list.appendChild(li);
     });
   }

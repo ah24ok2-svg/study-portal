@@ -681,7 +681,7 @@ Script Properties に追加する値:
 - `tutorLogout` `{ tutorToken }`
 - `tutorListStudents` → `{ students: [{ studentId, name, unreadCount, lastActivityAt, lastMessage }] }`（`lastActivityAt` の新しい順）
 - `tutorGetThread` `{ studentId }` → `{ student, messages, submissions }`
-  - `messages` は直近 200 件、`submissions` は新しい順で `fileUrl`（Drive の閲覧 URL）と `annotated` を含む
+  - `messages` は直近 200 件、`submissions` は新しい順で `annotated` を含む
   - 取得時にその生徒からのメッセージを講師既読にする
 - `tutorSendMessage` `{ studentId, body }` → `{ id, createdAt }`（1000 文字以内）
 
@@ -690,7 +690,7 @@ Script Properties に追加する値:
 - 幅 768px 以上（iPad）は左に生徒一覧、右に選択中の生徒の画面を並べる。スマホは一覧 → 詳細の画面遷移
 - 生徒の画面は「やりとり」「提出物」の切り替え
   - やりとり: 生徒アプリと同じ吹き出し表示と返信欄
-  - 提出物: ファイル名・日時・コメント・「✏️ 書き込み済み」表示と「Driveで開く」ボタン
+  - 提出物: ファイル名・日時・コメント・「✏️ 書き込み済み」表示。ファイルは講師が PDF ビューアアプリから Drive を直接開くので、アプリ内にリンクは置かない
 - 30 秒ごとにポーリング（非表示中は停止）
 
 ### 13.6 プッシュ通知（講師のみ・未実装）
