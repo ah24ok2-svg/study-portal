@@ -31,6 +31,9 @@ function setup() {
   getProp("NOTIFY_EMAIL");
   getProp("TUTOR_EMAIL");
   getProp("GOOGLE_CLIENT_ID");
+  getProp("FIREBASE_PROJECT_ID");
+  // 実行時に通知用の権限（firebase.messaging）を承認させるため、ここでトークンを取っておく
+  ScriptApp.getOAuthToken();
   console.log("初期設定が完了しました");
 }
 

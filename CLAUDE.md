@@ -33,7 +33,7 @@ spec.md  仕様書
 
 IDや秘密情報は GAS の Script Properties に置く。ソースに直書きしない。
 `docs/config.js` に入れてよいのは `GAS_URL`、`GOOGLE_CLIENT_ID`、`FIREBASE_CONFIG`、`FIREBASE_VAPID_KEY`（どれも公開前提の値）だけ。
-Firebase のサービスアカウント JSON は秘密情報。Script Properties の `FIREBASE_SERVICE_ACCOUNT` にだけ置く。
+通知の送信は講師本人の OAuth トークンで行い、サービスアカウント鍵は作らない（spec.md §13.6）。
 
 ---
 

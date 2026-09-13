@@ -706,7 +706,10 @@ Script Properties に追加する値:
 
 **送信**
 - 生徒の `sendMessage` と `upload` が成功した後に、GAS から FCM HTTP v1 API で登録済みの全端末へ送る
-- 認証はサービスアカウントの JWT（RS256）で取得したアクセストークン。サービスアカウント JSON は Script Properties の `FIREBASE_SERVICE_ACCOUNT` に置く（**秘密情報。リポジトリにもチャットにも出さない**）。アクセストークンは CacheService に50分保存する
+- 認証は講師本人の OAuth トークン（`ScriptApp.getOAuthToken()`、スコープ `firebase.messaging`）。Web App は講師本人として実行されるため使える
+  - 新しい Cloud プロジェクトではサービスアカウント鍵の作成が組織ポリシーで禁止されており、鍵を保管するリスクも無くせるため、鍵は使わない
+  - 前提: Apps Script プロジェクトを Firebase と同じ Cloud プロジェクトに紐付ける。OAuth 同意画面は「本番環境」にする（「テスト」のままだと承認が7日で切れ、生徒側も含めて Web App が止まる）
+- 送信先プロジェクトは Script Properties の `FIREBASE_PROJECT_ID`
 - **データメッセージ**として送り、表示は Service Worker が必ず行う。iOS は通知を表示しないプッシュが続くと購読を打ち切るため
 - 本文は100文字で切る。ロック画面に出るため
 - FCM が 404 / `UNREGISTERED` を返したトークンは削除する

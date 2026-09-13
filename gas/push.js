@@ -5,8 +5,6 @@
 const PUSH_TOKEN_PREFIX = "push_token_";
 const PUSH_TOKEN_PATTERN = /^[A-Za-z0-9_:\-]{20,4096}$/;
 const PUSH_BODY_MAX = 100;
-const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
-const FCM_ACCESS_TOKEN_CACHE_KEY = "fcm_access_token";
 
 function handleTutorRegisterPush(req) {
   authenticateTutor(req.tutorToken);
@@ -31,8 +29,8 @@ function handleTutorUnregisterPush(req) {
 
 function handleTutorTestPush(req) {
   authenticateTutor(req.tutorToken);
-  if (!PropertiesService.getScriptProperties().getProperty("FIREBASE_SERVICE_ACCOUNT")) {
-    throw new AppError("VALIDATION_ERROR", "通知の送信設定（FIREBASE_SERVICE_ACCOUNT）がまだです");
+  if (!PropertiesService.getScriptProperties().getProperty("FIREBASE_PROJECT_ID")) {
+    throw new AppError("VALIDATION_ERROR", "通知の送信設定（FIREBASE_PROJECT_ID）がまだです");
   }
   const result = sendPushToTutor({ title: "テスト通知", body: "Study Portal からの通知が届いています", studentId: "" });
   return ok(result);
@@ -63,12 +61,14 @@ function readPushTokens() {
 
 function sendPushToTutor(payload) {
   const tokens = readPushTokens();
-  const serviceAccountJson = PropertiesService.getScriptProperties().getProperty("FIREBASE_SERVICE_ACCOUNT");
-  if (tokens.length === 0 || !serviceAccountJson) return { sent: 0, failed: 0 };
+  const projectId = PropertiesService.getScriptProperties().getProperty("FIREBASE_PROJECT_ID");
+  if (tokens.length === 0 || !projectId) return { sent: 0, failed: 0 };
 
-  const account = JSON.parse(serviceAccountJson);
-  const accessToken = getFcmAccessToken(account);
-  const url = "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(account.project_id) + "/messages:send";
+  // サービスアカウントの鍵は作らない（新しい Cloud プロジェクトでは作成自体が禁止されている）。
+  // Web App は講師本人として実行されるので、本人の OAuth トークン（firebase.messaging スコープ）で送る。
+  // そのため Apps Script のプロジェクトを Firebase と同じ Cloud プロジェクトに紐付けておく必要がある
+  const accessToken = ScriptApp.getOAuthToken();
+  const url = "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(projectId) + "/messages:send";
   const body = Array.from(String(payload.body || "")).slice(0, PUSH_BODY_MAX).join("");
 
   const requests = tokens.map(function (t) {
@@ -116,40 +116,3 @@ function sendPushToTutor(payload) {
   return { sent: sent, failed: failed };
 }
 
-/**
- * サービスアカウントの JWT でアクセストークンを取る。
- * 生徒が送信するたびに取り直すと遅くなるので、有効期限(1時間)より短い50分だけキャッシュする
- */
-function getFcmAccessToken(account) {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(FCM_ACCESS_TOKEN_CACHE_KEY);
-  if (cached) return cached;
-
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64UrlJson({ alg: "RS256", typ: "JWT" });
-  const claims = base64UrlJson({
-    iss: account.client_email,
-    scope: FCM_SCOPE,
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + 3600
-  });
-  const input = header + "." + claims;
-  const signature = Utilities.base64EncodeWebSafe(Utilities.computeRsaSha256Signature(input, account.private_key)).replace(/=+$/, "");
-
-  const res = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
-    method: "post",
-    payload: { grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: input + "." + signature },
-    muteHttpExceptions: true
-  });
-  if (res.getResponseCode() !== 200) {
-    throw new Error("FCM のアクセストークン取得に失敗: " + res.getResponseCode() + " " + res.getContentText().slice(0, 300));
-  }
-  const token = JSON.parse(res.getContentText()).access_token;
-  cache.put(FCM_ACCESS_TOKEN_CACHE_KEY, token, 50 * 60);
-  return token;
-}
-
-function base64UrlJson(obj) {
-  return Utilities.base64EncodeWebSafe(JSON.stringify(obj), Utilities.Charset.UTF_8).replace(/=+$/, "");
-}
