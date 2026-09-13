@@ -4,6 +4,10 @@
   const GAS_URL = window.APP_CONFIG && window.APP_CONFIG.GAS_URL;
   const TOKEN_KEY = "tutorapp.token";
   const NAME_KEY = "tutorapp.name";
+  // GAS は1回の応答に1〜2秒かかるので、前回の表示を保存しておき、開いた瞬間に出す
+  const MESSAGES_CACHE_KEY = "tutorapp.cache.messages";
+  const HISTORY_CACHE_KEY = "tutorapp.cache.history";
+  const MESSAGES_CACHE_LIMIT = 100;
   const POLL_INTERVAL_MS = 30 * 1000;
   const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
   const MAX_EDGE_PX = 2000;
@@ -32,6 +36,9 @@
     messages: [],
     messageIds: new Set(),
     lastCreatedAt: null,
+    messagesLoaded: false,
+    // 送信中のメッセージ。サーバーの一覧とは別に持ち、ポーリングで上書きされないようにする
+    pending: [],
     pollTimer: null,
     loadingMessages: false,
     submit: {
@@ -54,6 +61,25 @@
   }
   function storageRemove(key) {
     try { localStorage.removeItem(key); } catch (_) { /* noop */ }
+  }
+
+  /** 別の生徒の表示が一瞬でも出ないよう、保存時の合言葉と一致するときだけ使う */
+  function readCache(key) {
+    try {
+      const cached = JSON.parse(storageGet(key) || "null");
+      return cached && cached.owner === state.token ? cached.items : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeCache(key, items) {
+    storageSet(key, JSON.stringify({ owner: state.token, items: items }));
+  }
+
+  function clearCaches() {
+    storageRemove(MESSAGES_CACHE_KEY);
+    storageRemove(HISTORY_CACHE_KEY);
   }
 
   // ---------------------------------------------------------------------------
@@ -157,11 +183,14 @@
   function logout(message) {
     storageRemove(TOKEN_KEY);
     storageRemove(NAME_KEY);
+    clearCaches();
     state.token = null;
     stopPolling();
     state.messages = [];
     state.messageIds = new Set();
     state.lastCreatedAt = null;
+    state.messagesLoaded = false;
+    state.pending = [];
     renderMessages();
     resetSubmit();
     closeViewer();
@@ -174,6 +203,9 @@
     $("login-view").hidden = true;
     $("app-view").hidden = false;
     switchTab("messages");
+    // 保存した表示が無くても「読み込んでいます…」を出す（HTML の初期文言は「まだありません」のため）
+    renderMessages();
+    restoreCaches();
     loadMessages({ scrollToBottom: true });
     loadHistory();
     startPolling();
@@ -228,6 +260,18 @@
     list.scrollTop = list.scrollHeight;
   }
 
+  function restoreCaches() {
+    const messages = readCache(MESSAGES_CACHE_KEY);
+    if (messages && messages.length) {
+      addMessages(messages);
+      state.messagesLoaded = true;
+      renderMessages();
+      scrollMessagesToBottom();
+    }
+    const history = readCache(HISTORY_CACHE_KEY);
+    if (history) renderHistory(history);
+  }
+
   function addMessages(incoming) {
     let added = false;
     incoming.forEach(function (m) {
@@ -252,7 +296,10 @@
       $("messages-error").hidden = true;
       // 描画前に判定しないと、追加分の高さで「最下部にいない」扱いになる
       const stickToBottom = (options && options.scrollToBottom) || isNearBottom(list);
-      if (addMessages(data.messages) || (options && options.scrollToBottom)) {
+      const firstLoad = !state.messagesLoaded;
+      state.messagesLoaded = true;
+      if (addMessages(data.messages) || firstLoad || (options && options.scrollToBottom)) {
+        writeCache(MESSAGES_CACHE_KEY, state.messages.slice(-MESSAGES_CACHE_LIMIT));
         renderMessages();
         if (stickToBottom) scrollMessagesToBottom();
       }
@@ -270,10 +317,13 @@
     const list = $("message-list");
     const empty = $("messages-empty");
     list.replaceChildren(empty);
-    empty.hidden = state.messages.length > 0;
+    empty.hidden = state.messages.length + state.pending.length > 0;
+    empty.innerHTML = state.messagesLoaded
+      ? "まだメッセージはありません。<br>質問や連絡があれば送ってください。"
+      : "読み込んでいます…";
 
     let lastDay = null;
-    state.messages.forEach(function (m) {
+    state.messages.concat(state.pending).forEach(function (m) {
       const date = new Date(m.createdAt);
       const day = dayFormat.format(date);
       if (day !== lastDay) {
@@ -295,7 +345,7 @@
       }
 
       const wrap = document.createElement("div");
-      wrap.className = "msg " + (m.sender === "student" ? "msg-student" : "msg-tutor");
+      wrap.className = "msg " + (m.sender === "student" ? "msg-student" : "msg-tutor") + (m.pending ? " msg-pending" : "");
       if (m.sender === "tutor") {
         const sender = document.createElement("p");
         sender.className = "msg-sender";
@@ -307,7 +357,7 @@
       bubble.textContent = m.body; // textContent なので本文にHTMLが含まれても安全
       const time = document.createElement("span");
       time.className = "msg-time";
-      time.textContent = timeFormat.format(date);
+      time.textContent = m.pending ? "送信中…" : timeFormat.format(date);
       wrap.append(bubble, time);
       list.appendChild(wrap);
     });
@@ -320,29 +370,38 @@
     $("composer-send").disabled = input.value.trim() === "";
   }
 
+  /** 返事を待たずに吹き出しを出す。GAS の応答（1〜2秒）を待つと送れていないように見えるため */
   async function onSendMessage(event) {
     event.preventDefault();
     const input = $("composer-input");
     const body = input.value.trim();
     if (!body) return;
-    const button = $("composer-send");
-    button.disabled = true;
-    input.disabled = true;
+
+    const pending = { id: "pending_" + Date.now() + Math.random(), sender: "student", body: body, createdAt: new Date().toISOString(), system: false, pending: true };
+    state.pending.push(pending);
+    input.value = "";
+    autoGrowComposer();
+    $("messages-error").hidden = true;
+    renderMessages();
+    scrollMessagesToBottom();
+
     try {
       const data = await api("sendMessage", { body: body });
+      state.pending = state.pending.filter(function (p) { return p !== pending; });
       addMessages([{ id: data.id, sender: "student", body: body, createdAt: data.createdAt, system: false }]);
+      writeCache(MESSAGES_CACHE_KEY, state.messages.slice(-MESSAGES_CACHE_LIMIT));
       renderMessages();
-      scrollMessagesToBottom();
-      input.value = "";
-      $("messages-error").hidden = true;
     } catch (err) {
+      state.pending = state.pending.filter(function (p) { return p !== pending; });
       if (err.code === "INVALID_TOKEN") return;
-      // 入力した文章は消さずに残す
-      $("messages-error").textContent = userMessage(err);
+      renderMessages();
+      // 書いた文章は消さずに入力欄へ戻す。続けて別の文章を書き始めていたら上書きしない
+      if (!input.value.trim()) {
+        input.value = body;
+        autoGrowComposer();
+      }
+      $("messages-error").textContent = userMessage(err) + "（メッセージは送られていません）";
       $("messages-error").hidden = false;
-    } finally {
-      input.disabled = false;
-      autoGrowComposer();
     }
   }
 
@@ -381,6 +440,7 @@
     try {
       const data = await api("getSubmissions");
       $("history-error").hidden = true;
+      writeCache(HISTORY_CACHE_KEY, data.submissions);
       renderHistory(data.submissions);
     } catch (err) {
       if (err.code === "INVALID_TOKEN") return;

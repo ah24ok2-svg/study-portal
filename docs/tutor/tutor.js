@@ -8,6 +8,8 @@
   const PUSH_TOKEN_KEY = "tutorapp.pushToken";
   const FIREBASE_SDK_BASE = "https://www.gstatic.com/firebasejs/10.14.1/";
   const PENDING_KEY = "tutorapp.pendingLogin";
+  // GAS は1回の応答に1〜2秒かかるので、前回の一覧とやりとりを保存しておき、開いた瞬間に出す
+  const CACHE_PREFIX = "tutorapp.tutorCache.";
   const POLL_INTERVAL_MS = 30 * 1000;
   const TIME_ZONE = "Asia/Tokyo";
 
@@ -27,7 +29,10 @@
     thread: null,
     pollTimer: null,
     loadingList: false,
-    loadingThread: false,
+    // 読み込み中のスレッドの生徒ID。別の生徒を選んだときに読み込みを止めないよう、真偽値ではなくIDで持つ
+    loadingThread: null,
+    // 送信中の返信。サーバーから取り直したスレッドで上書きされないよう、別に持つ
+    pending: [],
     // 通知から開いたときに、一覧の読み込み後に選ぶ生徒
     pendingStudentId: new URLSearchParams(location.search).get("student")
   };
@@ -79,6 +84,28 @@
       throw new ApiError(code, code === "INTERNAL_ERROR" ? TEXT.unknown : message);
     }
     return body.data;
+  }
+
+  /** ログインし直すと別の講師トークンになるので、保存時のトークンと一致するときだけ使う */
+  function readCache(name) {
+    try {
+      const cached = JSON.parse(storageGet(CACHE_PREFIX + name) || "null");
+      return cached && cached.owner === state.tutorToken ? cached.items : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeCache(name, items) {
+    storageSet(CACHE_PREFIX + name, JSON.stringify({ owner: state.tutorToken, items: items }));
+  }
+
+  function clearCaches() {
+    try {
+      Object.keys(localStorage)
+        .filter(function (key) { return key.indexOf(CACHE_PREFIX) === 0; })
+        .forEach(function (key) { localStorage.removeItem(key); });
+    } catch (_) { /* noop */ }
   }
 
   function showError(el, text) {
@@ -163,6 +190,8 @@
   }
 
   function logout(message) {
+    clearCaches();
+    state.pending = [];
     storageRemove(PUSH_TOKEN_KEY);
     storageRemove(TOKEN_KEY);
     state.tutorToken = null;
@@ -176,6 +205,11 @@
   function enterApp() {
     $("login-view").hidden = true;
     $("app-view").hidden = false;
+    const cachedStudents = readCache("students");
+    if (cachedStudents) {
+      state.students = cachedStudents;
+      renderStudents();
+    }
     loadStudents();
     startPolling();
     refreshPushToken();
@@ -214,6 +248,7 @@
     try {
       const data = await api("tutorListStudents");
       state.students = data.students;
+      writeCache("students", data.students);
       showError($("students-error"), "");
       renderStudents();
       openPendingStudent();
@@ -278,7 +313,7 @@
     const changed = state.selectedId !== studentId;
     state.selectedId = studentId;
     if (changed) {
-      state.thread = null;
+      state.thread = readCache("thread." + studentId);
       $("composer-input").value = "";
       autoGrowComposer();
     }
@@ -289,6 +324,7 @@
     $("layout").classList.add("show-detail");
     renderStudents();
     renderThread();
+    scrollToBottom();
     loadThread({ scrollToBottom: true });
   }
 
@@ -322,8 +358,8 @@
 
   async function loadThread(options) {
     const studentId = state.selectedId;
-    if (!studentId || state.loadingThread) return;
-    state.loadingThread = true;
+    if (!studentId || state.loadingThread === studentId) return;
+    state.loadingThread = studentId;
     const list = $("message-list");
     try {
       const data = await api("tutorGetThread", { studentId: studentId });
@@ -331,6 +367,7 @@
       if (state.selectedId !== studentId) return;
       const stick = (options && options.scrollToBottom) || isNearBottom(list);
       state.thread = data;
+      writeCache("thread." + studentId, data);
       showError($("messages-error"), "");
       renderThread();
       if (stick) scrollToBottom();
@@ -343,7 +380,7 @@
     } catch (err) {
       if (err.code !== "INVALID_TOKEN") showError($("messages-error"), err.message);
     } finally {
-      state.loadingThread = false;
+      if (state.loadingThread === studentId) state.loadingThread = null;
     }
   }
 
@@ -352,8 +389,10 @@
     const empty = $("messages-empty");
     list.replaceChildren(empty);
     const thread = state.thread;
-    const messages = thread ? thread.messages : [];
-    empty.hidden = !thread || messages.length > 0;
+    const pending = state.pending.filter(function (p) { return p.studentId === state.selectedId; });
+    const messages = (thread ? thread.messages : []).concat(pending);
+    empty.hidden = messages.length > 0;
+    empty.textContent = thread ? "まだメッセージはありません。" : "読み込んでいます…";
     $("submission-count").textContent = thread ? "(" + thread.submissions.length + ")" : "";
 
     let lastDay = null;
@@ -377,13 +416,13 @@
         return;
       }
       const wrap = document.createElement("div");
-      wrap.className = "msg " + (m.sender === "tutor" ? "msg-mine" : "msg-theirs");
+      wrap.className = "msg " + (m.sender === "tutor" ? "msg-mine" : "msg-theirs") + (m.pending ? " msg-pending" : "");
       const bubble = document.createElement("div");
       bubble.className = "bubble";
       bubble.textContent = m.body;
       const time = document.createElement("span");
       time.className = "msg-time";
-      time.textContent = shortTime.format(date);
+      time.textContent = m.pending ? "送信中…" : shortTime.format(date);
       wrap.append(bubble, time);
       list.appendChild(wrap);
     });
@@ -437,26 +476,50 @@
     $("composer-send").disabled = input.value.trim() === "";
   }
 
+  /** 返事を待たずに吹き出しを出す。GAS の応答（1〜2秒）を待つと送れていないように見えるため */
   async function onSend(event) {
     event.preventDefault();
     const input = $("composer-input");
     const body = input.value.trim();
     const studentId = state.selectedId;
     if (!body || !studentId) return;
-    $("composer-send").disabled = true;
-    input.disabled = true;
+
+    const pending = { id: "pending_" + Date.now() + Math.random(), studentId: studentId, sender: "tutor", body: body, createdAt: new Date().toISOString(), system: false, pending: true };
+    state.pending.push(pending);
+    input.value = "";
+    autoGrowComposer();
+    showError($("messages-error"), "");
+    renderThread();
+    scrollToBottom();
+
     try {
-      await api("tutorSendMessage", { studentId: studentId, body: body });
-      input.value = "";
-      showError($("messages-error"), "");
-      await loadThread({ scrollToBottom: true });
+      const data = await api("tutorSendMessage", { studentId: studentId, body: body });
+      state.pending = state.pending.filter(function (p) { return p !== pending; });
+      // 取り直しを待たずに確定分として表示する。既読状態などの反映は裏の再取得に任せる
+      if (state.thread && state.thread.student.studentId === studentId &&
+          !state.thread.messages.some(function (m) { return m.id === data.id; })) {
+        state.thread.messages.push({ id: data.id, sender: "tutor", body: body, createdAt: data.createdAt, system: false });
+        writeCache("thread." + studentId, state.thread);
+      }
+      if (state.selectedId === studentId) renderThread();
+      loadThread();
       loadStudents();
     } catch (err) {
-      // 書いた返信は消さずに残す
-      if (err.code !== "INVALID_TOKEN") showError($("messages-error"), err.message);
-    } finally {
-      input.disabled = false;
-      autoGrowComposer();
+      state.pending = state.pending.filter(function (p) { return p !== pending; });
+      if (err.code === "INVALID_TOKEN") return;
+      if (state.selectedId !== studentId) {
+        // 別の生徒に移っていたら入力欄へ戻せないので、一覧の上で知らせる
+        const student = state.students.find(function (x) { return x.studentId === studentId; });
+        showError($("students-error"), (student ? student.name + "さんへの" : "") + "返信を送れませんでした: " + body.slice(0, 40));
+        return;
+      }
+      renderThread();
+      // 書いた返信は消さずに入力欄へ戻す。続けて別の文章を書き始めていたら上書きしない
+      if (!input.value.trim()) {
+        input.value = body;
+        autoGrowComposer();
+      }
+      showError($("messages-error"), err.message + "（返信は送られていません）");
     }
   }
 
