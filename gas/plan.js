@@ -150,9 +150,15 @@ function handleSetProgress(req) {
 
   withLock(function () {
     const sheet = getSheet(SHEET.GOAL_PROGRESS);
-    const existing = readRows(SHEET.GOAL_PROGRESS).find(function (r) {
-      return r.values[1] === goal.goalId && toDateKey(r.values[3]) === studyDate;
-    });
+    const rows = readRows(SHEET.GOAL_PROGRESS).filter(function (r) { return r.values[1] === goal.goalId; });
+    const existing = rows.find(function (r) { return toDateKey(r.values[3]) === studyDate; });
+    // 進捗は「何ページ目まで」で数えるので、後の日にチェックがあるのに前の日を外すと
+    // 進捗バーが減らず表示が食い違う。外す（減らす）のは後の日から順番にさせる（spec §14.3）
+    const decreasing = existing && (through === null || through < Number(existing.values[4]));
+    const laterChecked = rows.some(function (r) { return toDateKey(r.values[3]) > studyDate; });
+    if (decreasing && laterChecked) {
+      throw new AppError("VALIDATION_ERROR", "後の日のチェックがあるため外せません。先に後の日の分を外してください");
+    }
     if (through === null) {
       if (existing) sheet.deleteRow(existing.rowNumber);
     } else if (existing) {

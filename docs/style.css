@@ -495,31 +495,34 @@ body.viewer-open { overflow: hidden; }
 .plan-day-hint { margin-top: 8px; }
 .todo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .todo {
-  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 12px;
-  padding: 12px 14px;
+  padding: 12px 14px 14px;
   background: var(--surface); border-radius: var(--radius);
   box-shadow: 0 1px 2px rgba(60, 38, 20, .05);
 }
-.todo-check {
-  width: 32px; height: 32px; flex: none;
-  display: grid; place-items: center;
-  border: 2px solid var(--primary); border-radius: 9px;
-  background: var(--surface); color: #fff; cursor: pointer;
-}
-.todo-check:disabled { cursor: default; border-color: #d6cfc4; }
-.todo-done .todo-check { background: #2f9e44; border-color: #2f9e44; }
-.todo.todo-partial .todo-check { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-.todo-missed .todo-check { border-color: var(--danger); }
-.todo-body { min-width: 0; }
+.todo-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.todo-body { flex: 1; min-width: 0; }
 .todo-title { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
-.todo-range { margin: 0; font-size: 14px; }
-.todo-done .todo-title, .todo-done .todo-range { color: var(--ink-soft); }
-.todo-done .todo-range { text-decoration: line-through; }
-.todo-note { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
+.todo-range { margin: 0; font-size: 14px; color: var(--ink-soft); }
+.todo-count { flex: none; padding: 0 10px; border-radius: 999px; background: var(--bg); font-size: 13px; font-weight: 700; line-height: 1.9; }
+.todo-done .todo-count { background: #e7f5ec; color: #1f6b3a; }
+.todo-missed .todo-count { background: var(--danger-soft); color: var(--danger); }
+.todo-note { margin: 8px 0 0; font-size: 12px; color: var(--ink-soft); }
 .todo-missed .todo-note { color: var(--danger); }
-.todo-partial-btn { margin: 0; font-size: 13px; color: var(--primary-ink); white-space: nowrap; }
-.todo-partial-form { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
-.todo-partial-form label { display: flex; align-items: center; gap: 4px; }
-.todo-partial-form .input { width: 96px; padding: 8px 10px; }
-.todo-partial-form .btn { min-height: 40px; padding: 0 16px; }
-.todo-partial-form .field-error { flex-basis: 100%; min-height: 0; margin: 0; }
+
+/* 1ページごとのボックス。指で押しやすいよう44px四方を確保する */
+.page-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
+.page-check {
+  position: relative;
+  min-height: 46px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  border: 2px solid var(--primary); border-radius: 10px;
+  background: var(--surface); color: var(--ink); cursor: pointer;
+  transition: background-color .12s, transform .08s;
+}
+.page-check:active:not(:disabled) { transform: scale(.94); }
+.page-num { font-size: 13px; font-weight: 700; line-height: 1.1; }
+.page-check.is-checked { background: #2f9e44; border-color: #2f9e44; color: #fff; }
+.page-check.is-checked .page-num { font-size: 11px; opacity: .9; }
+.page-check:disabled { cursor: default; border-color: #d6cfc4; }
+.page-check.is-checked:disabled { background: #8cc79a; border-color: #8cc79a; }
+.todo-missed .page-check:not(.is-checked) { border-color: #e6b3ad; }

@@ -45,7 +45,6 @@
     this.plans = [];
     this.month = null;
     this.selected = null;
-    this.openPartial = null; // 「途中まで」の入力欄を開いている goalId
   }
 
   PlanView.prototype.setData = function (data) {
@@ -64,19 +63,29 @@
     this.plans = this.data ? P.computePlan(this.data.goals, this.data.progress, this.data.today) : [];
   };
 
-  /** 送信を待たずに表示へ反映する。失敗したら元に戻す */
+  /**
+   * 送信を待たずに表示へ反映する。
+   * 1ページずつ素早く押されると、通信の届く順番が入れ替わってサーバーの記録が古い値で上書きされうるので、
+   * 送信は1件ずつ順番に行う
+   */
   PlanView.prototype.setProgress = function (goalId, date, through) {
     const self = this;
     const before = this.data.progress.slice();
     this.data.progress = this.data.progress.filter(function (r) { return !(r.goalId === goalId && r.studyDate === date); });
     if (through !== null) this.data.progress.push({ goalId: goalId, studyDate: date, throughPage: through });
-    this.openPartial = null;
     this.recompute();
     this.render();
-    Promise.resolve(this.options.onSetProgress(goalId, date, through)).catch(function (err) {
-      self.data.progress = before;
-      self.recompute();
-      self.render();
+
+    const seq = (this.seq = (this.seq || 0) + 1);
+    this.queue = (this.queue || Promise.resolve()).then(function () {
+      return self.options.onSetProgress(goalId, date, through);
+    }).catch(function (err) {
+      // 後から押した分がまだ控えているなら、それが最新の状態を送るので戻さない
+      if (seq === self.seq) {
+        self.data.progress = before;
+        self.recompute();
+        self.render();
+      }
       if (self.options.onError) self.options.onError(err && err.message ? err.message : "記録できませんでした");
     });
   };
@@ -247,7 +256,6 @@
 
   PlanView.prototype.select = function (date) {
     this.selected = date;
-    this.openPartial = null;
     this.render();
     const day = this.root.querySelector(".plan-day");
     if (day && day.scrollIntoView) day.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -256,6 +264,34 @@
 
   // ---------------------------------------------------------------------------
   // その日のやること
+
+  /** 後の日にチェックがあるか。あるうちは前の日のチェックを外させない（spec §14.3） */
+  PlanView.prototype.laterChecked = function (goalId, date) {
+    return this.data.progress.some(function (r) { return r.goalId === goalId && r.studyDate > date; });
+  };
+
+  /** ページのボックスを押したとき。未チェックならそこまで付け、チェック済みならそこから先を外す */
+  PlanView.prototype.togglePage = function (goal, entry, page) {
+    const current = entry.record === null ? entry.from - 1 : entry.record;
+    if (page > current) {
+      this.setProgress(goal.goalId, entry.date, page);
+      return;
+    }
+    if (this.laterChecked(goal.goalId, entry.date)) {
+      const later = this.data.progress
+        .filter(function (r) { return r.goalId === goal.goalId && r.studyDate > entry.date; })
+        .map(function (r) { return r.studyDate; })
+        .sort()
+        .pop();
+      if (this.options.onError) this.options.onError("後の日（" + md(later) + "）のチェックがあるため外せません。先にその日の分を外してください");
+      return;
+    }
+    const last = Math.min(current, entry.to);
+    const label = page === last ? "p." + page : "p." + page + "〜" + last;
+    if (!window.confirm(label + " のチェックを外しますか？")) return;
+    const next = page - 1;
+    this.setProgress(goal.goalId, entry.date, next < entry.from ? null : next);
+  };
 
   PlanView.prototype.renderDay = function () {
     const self = this;
@@ -278,73 +314,46 @@
       const canEdit = self.options.editable && e.editable;
       const li = el("li", "todo todo-" + e.status);
 
-      const check = el("button", "todo-check");
-      check.type = "button";
-      check.setAttribute("role", "checkbox");
-      check.setAttribute("aria-checked", e.status === "done" ? "true" : e.status === "partial" ? "mixed" : "false");
-      check.setAttribute("aria-label", g.title + " " + range(e) + (e.status === "done" ? "（完了）" : ""));
-      check.disabled = !canEdit;
-      check.innerHTML = e.status === "done"
-        ? '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-        : e.status === "partial" ? '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 12h12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>' : "";
-      if (canEdit) {
-        check.addEventListener("click", function () {
-          self.setProgress(g.goalId, date, e.status === "done" ? null : e.to);
-        });
-      }
+      const head = el("div", "todo-head");
+      const titles = el("div", "todo-body");
+      titles.appendChild(el("p", "todo-title", g.title));
+      titles.appendChild(el("p", "todo-range", range(e) + "（" + e.pages + "ページ）"));
+      head.appendChild(titles);
+      const doneCount = e.record === null ? 0 : Math.max(0, Math.min(e.record, e.to) - e.from + 1);
+      const count = el("span", "todo-count", e.status === "done" ? "✓ 完了" : doneCount + " / " + e.pages);
+      head.appendChild(count);
+      li.appendChild(head);
 
-      const body = el("div", "todo-body");
-      body.appendChild(el("p", "todo-title", g.title));
-      body.appendChild(el("p", "todo-range", range(e) + "（" + e.pages + "ページ）"));
+      // 1ページごとのボックス。押しながら進めることで達成感を出す（spec §14.3）
+      const pages = el("div", "page-checks");
+      pages.setAttribute("role", "group");
+      pages.setAttribute("aria-label", g.title + " のページ");
+      for (let n = e.from; n <= e.to; n++) {
+        const checked = e.record !== null && n <= e.record;
+        const box = el("button", "page-check" + (checked ? " is-checked" : ""));
+        box.type = "button";
+        box.setAttribute("role", "checkbox");
+        box.setAttribute("aria-checked", String(checked));
+        box.setAttribute("aria-label", "p." + n);
+        box.disabled = !canEdit;
+        box.innerHTML = checked
+          ? '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+          : "";
+        box.appendChild(el("span", "page-num", String(n)));
+        if (canEdit) {
+          box.addEventListener("click", (function (page) {
+            return function () { self.togglePage(g, e, page); };
+          })(n));
+        }
+        pages.appendChild(box);
+      }
+      li.appendChild(pages);
+
       let note = "";
       if (e.overdue) note = "期限を過ぎています。残りをまとめて表示しています";
-      else if (e.status === "partial") note = "p." + e.record + " までできた" + (date < self.data.today ? "（残りは次の日以降に回しました）" : "");
+      else if (e.status === "partial" && date < self.data.today) note = "p." + e.record + " までできた（残りは次の日以降に回しました）";
       else if (e.status === "missed") note = "できなかった分は、次の日以降に回しました";
-      else if (e.status === "done" && e.record > e.to) note = "p." + e.record + " まで先に進めました";
-      if (note) body.appendChild(el("p", "todo-note", note));
-
-      li.append(check, body);
-
-      if (canEdit && e.status !== "done") {
-        const partialBtn = el("button", "link-button todo-partial-btn", "途中まで");
-        partialBtn.type = "button";
-        partialBtn.addEventListener("click", function () {
-          self.openPartial = self.openPartial === g.goalId ? null : g.goalId;
-          self.render();
-          const input = self.root.querySelector(".todo-partial-form input");
-          if (input) input.focus();
-        });
-        li.appendChild(partialBtn);
-      }
-
-      if (canEdit && self.openPartial === g.goalId) {
-        const form = el("form", "todo-partial-form");
-        const label = el("label", "", "p.");
-        const input = document.createElement("input");
-        input.type = "number";
-        input.inputMode = "numeric";
-        input.className = "input";
-        input.min = String(e.from);
-        input.max = String(g.endPage);
-        input.value = e.record && e.record >= e.from ? String(e.record) : "";
-        input.setAttribute("aria-label", "何ページ目までできたか");
-        label.appendChild(input);
-        const tail = el("span", "", " までできた");
-        const save = el("button", "btn btn-primary", "記録");
-        save.type = "submit";
-        const err = el("p", "field-error", "");
-        form.append(label, tail, save, err);
-        form.addEventListener("submit", function (ev) {
-          ev.preventDefault();
-          const n = Number(input.value);
-          if (!Number.isInteger(n) || n < e.from || n > g.endPage) {
-            err.textContent = "p." + e.from + "〜" + g.endPage + " の数字を入れてください";
-            return;
-          }
-          self.setProgress(g.goalId, date, n);
-        });
-        li.appendChild(form);
-      }
+      if (note) li.appendChild(el("p", "todo-note", note));
       list.appendChild(li);
     });
     wrap.appendChild(list);

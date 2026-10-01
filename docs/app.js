@@ -300,12 +300,12 @@
           }).catch(function (err) {
             // 過ぎた日になっていた等で弾かれたときは、最新の状態に揃える
             if (err.code === "VALIDATION_ERROR") loadPlan();
-            throw new Error(err.code === "INVALID_TOKEN" ? "" : userMessage(err));
+            throw new Error(err.code === "INVALID_TOKEN" ? "" : userMessage(err) + "（記録は保存されていません）");
           });
         },
         onError: function (message) {
           if (!message) return;
-          $("plan-error").textContent = message + "（記録は保存されていません）";
+          $("plan-error").textContent = message;
           $("plan-error").hidden = false;
         }
       });
