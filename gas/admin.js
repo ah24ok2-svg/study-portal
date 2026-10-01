@@ -25,6 +25,7 @@ function setup() {
     }
     // 列を追加したバージョンに上げたとき、既存シートのヘッダーも揃える。既存のデータ行には触らない
     sheet.getRange(1, 1, 1, HEADERS[name].length).setValues([HEADERS[name]]).setFontWeight("bold");
+    (TEXT_COLUMNS[name] || []).forEach(function (a1) { sheet.getRange(a1).setNumberFormat("@"); });
   });
   // ROOT_FOLDER_ID と NOTIFY_EMAIL が設定されているかもここで確かめておく
   DriveApp.getFolderById(getProp("ROOT_FOLDER_ID"));

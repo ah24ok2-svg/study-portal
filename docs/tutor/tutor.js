@@ -33,6 +33,12 @@
     loadingThread: null,
     // 送信中の返信。サーバーから取り直したスレッドで上書きされないよう、別に持つ
     pending: [],
+    planView: null,
+    loadingPlan: null,
+    // 編集中の目標（新規は null）と、フォームで選んでいる休み
+    editingGoal: null,
+    formRestWeekdays: [],
+    formRestDates: [],
     // 通知から開いたときに、一覧の読み込み後に選ぶ生徒
     pendingStudentId: new URLSearchParams(location.search).get("student")
   };
@@ -198,6 +204,9 @@
     state.students = [];
     state.selectedId = null;
     state.thread = null;
+    state.planView = null;
+    $("tutor-plan-root").replaceChildren();
+    closeGoalForm();
     stopPolling();
     showLogin(message);
   }
@@ -326,6 +335,14 @@
     renderThread();
     scrollToBottom();
     loadThread({ scrollToBottom: true });
+    if (changed) {
+      // 前の生徒の計画が一瞬でも見えないよう、作り直す
+      state.planView = null;
+      const cached = readCache("plan." + studentId);
+      if (cached) getPlanView().setData(cached);
+      else getPlanView().render();
+    }
+    if (state.view === "plan") loadPlan();
   }
 
   function backToList() {
@@ -343,8 +360,10 @@
       b.setAttribute("aria-selected", String(b.dataset.view === view));
     });
     $("view-messages").hidden = view !== "messages";
+    $("view-plan").hidden = view !== "plan";
     $("view-submissions").hidden = view !== "submissions";
     if (view === "messages") scrollToBottom();
+    if (view === "plan") loadPlan();
   }
 
   function isNearBottom(el) {
@@ -706,6 +725,193 @@
   function poll() {
     loadStudents();
     if (state.selectedId) loadThread();
+    if (state.selectedId && state.view === "plan") loadPlan();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 計画（spec §14）
+
+  const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+
+  function getPlanView() {
+    if (!state.planView) {
+      state.planView = new window.PlanView($("tutor-plan-root"), {
+        editable: false,
+        emptyText: "まだ目標がありません。「＋ 目標を追加」から作れます",
+        goalActions: function (goal, container) {
+          const edit = document.createElement("button");
+          edit.type = "button";
+          edit.className = "icon-button";
+          edit.setAttribute("aria-label", goal.title + "を編集");
+          edit.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="M4 20h4L19 9l-4-4L4 16z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+          edit.addEventListener("click", function () { openGoalForm(goal); });
+          const del = document.createElement("button");
+          del.type = "button";
+          del.className = "icon-button danger";
+          del.setAttribute("aria-label", goal.title + "を削除");
+          del.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+          del.addEventListener("click", function () { deleteGoal(goal); });
+          container.append(edit, del);
+        }
+      });
+    }
+    return state.planView;
+  }
+
+  async function loadPlan() {
+    const studentId = state.selectedId;
+    if (!studentId || state.loadingPlan === studentId) return;
+    state.loadingPlan = studentId;
+    try {
+      const data = await api("tutorGetPlan", { studentId: studentId });
+      if (state.selectedId !== studentId) return;
+      writeCache("plan." + studentId, data);
+      getPlanView().setData(data);
+      showError($("tutor-plan-error"), "");
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("tutor-plan-error"), err.message);
+    } finally {
+      if (state.loadingPlan === studentId) state.loadingPlan = null;
+    }
+  }
+
+  function planToday() {
+    const view = state.planView;
+    return view && view.data ? view.data.today : window.StudyPlan.studyDateNow();
+  }
+
+  function openGoalForm(goal) {
+    state.editingGoal = goal || null;
+    $("goal-form-title").textContent = goal ? "目標を編集" : "目標を追加";
+    $("goal-title").value = goal ? goal.title : "";
+    $("goal-start-page").value = goal ? goal.startPage : "";
+    $("goal-end-page").value = goal ? goal.endPage : "";
+    $("goal-start-date").value = goal ? goal.startDate : planToday();
+    $("goal-due-date").value = goal ? goal.dueDate : "";
+    $("goal-rest-date").value = "";
+    state.formRestWeekdays = goal ? goal.restWeekdays.slice() : [];
+    state.formRestDates = goal ? goal.restDates.slice() : [];
+    showError($("goal-error"), "");
+    renderGoalForm();
+    $("goal-panel").hidden = false;
+    $("goal-title").focus();
+  }
+
+  function closeGoalForm() {
+    $("goal-panel").hidden = true;
+    state.editingGoal = null;
+  }
+
+  function readGoalForm() {
+    const num = function (id) { const v = $(id).value.trim(); return v === "" ? NaN : Number(v); };
+    return {
+      goalId: state.editingGoal ? state.editingGoal.goalId : undefined,
+      title: $("goal-title").value.trim(),
+      startPage: num("goal-start-page"),
+      endPage: num("goal-end-page"),
+      startDate: $("goal-start-date").value,
+      dueDate: $("goal-due-date").value,
+      restWeekdays: state.formRestWeekdays.slice().sort(),
+      restDates: state.formRestDates.slice().sort()
+    };
+  }
+
+  /** 入力に合わせて「何日でどれくらいのペースか」をその場で見せる。期限の決め方の目安になるため */
+  function renderGoalPreview() {
+    const g = readGoalForm();
+    const preview = $("goal-preview");
+    if (!Number.isInteger(g.startPage) || !Number.isInteger(g.endPage) || g.endPage < g.startPage || !g.startDate || !g.dueDate || g.dueDate < g.startDate) {
+      preview.textContent = "";
+      return;
+    }
+    let days = 0;
+    for (let d = g.startDate; d <= g.dueDate; d = window.StudyPlan.addDays(d, 1)) {
+      if (!window.StudyPlan.isRestDay(g, d)) days++;
+      if (days > 400) break;
+    }
+    const pages = g.endPage - g.startPage + 1;
+    preview.textContent = days === 0
+      ? "勉強する日がありません。休みを見直してください"
+      : "勉強する日 " + days + "日 ／ " + pages + "ページ → 1日あたり約" + Math.ceil(pages / days) + "ページ";
+  }
+
+  function renderGoalForm() {
+    const box = $("goal-weekdays");
+    box.replaceChildren();
+    WEEKDAY_LABELS.forEach(function (label, i) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.setAttribute("aria-pressed", String(state.formRestWeekdays.indexOf(i) !== -1));
+      b.setAttribute("aria-label", label + "曜日を休みにする");
+      b.addEventListener("click", function () {
+        const at = state.formRestWeekdays.indexOf(i);
+        if (at === -1) state.formRestWeekdays.push(i);
+        else state.formRestWeekdays.splice(at, 1);
+        renderGoalForm();
+      });
+      box.appendChild(b);
+    });
+
+    const list = $("goal-rest-dates");
+    list.replaceChildren();
+    state.formRestDates.slice().sort().forEach(function (d) {
+      const li = document.createElement("li");
+      const p = d.split("-");
+      li.appendChild(document.createTextNode(Number(p[1]) + "/" + Number(p[2]) + "(" + WEEKDAY_LABELS[window.StudyPlan.weekday(d)] + ")"));
+      const x = document.createElement("button");
+      x.type = "button";
+      x.textContent = "×";
+      x.setAttribute("aria-label", d + "の休みを外す");
+      x.addEventListener("click", function () {
+        state.formRestDates = state.formRestDates.filter(function (v) { return v !== d; });
+        renderGoalForm();
+      });
+      li.appendChild(x);
+      list.appendChild(li);
+    });
+    renderGoalPreview();
+  }
+
+  function addRestDate() {
+    const d = $("goal-rest-date").value;
+    if (!d) return;
+    if (state.formRestDates.indexOf(d) === -1) state.formRestDates.push(d);
+    $("goal-rest-date").value = "";
+    renderGoalForm();
+  }
+
+  async function saveGoal(event) {
+    event.preventDefault();
+    const studentId = state.selectedId;
+    const goal = readGoalForm();
+    // サーバーでも検証するが、よくある入力漏れはその場で知らせる
+    if (!goal.title) return showError($("goal-error"), "テキスト名を入力してください");
+    if (!Number.isInteger(goal.startPage) || !Number.isInteger(goal.endPage)) return showError($("goal-error"), "ページを数字で入力してください");
+    if (!goal.dueDate) return showError($("goal-error"), "期限を入力してください");
+    const button = $("goal-save");
+    button.disabled = true;
+    button.textContent = "保存しています…";
+    try {
+      await api("tutorSaveGoal", { studentId: studentId, goal: goal });
+      closeGoalForm();
+      await loadPlan();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("goal-error"), err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = "保存";
+    }
+  }
+
+  async function deleteGoal(goal) {
+    if (!window.confirm("「" + goal.title + "」の目標を削除しますか？\n生徒の画面からも消えます。")) return;
+    try {
+      await api("tutorDeleteGoal", { goalId: goal.goalId });
+      await loadPlan();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("tutor-plan-error"), err.message);
+    }
   }
 
   function startPolling() {
@@ -747,6 +953,14 @@
     $("back-button").addEventListener("click", backToList);
     document.querySelectorAll(".segmented button").forEach(function (b) {
       b.addEventListener("click", function () { switchView(b.dataset.view); });
+    });
+    $("add-goal").addEventListener("click", function () { openGoalForm(null); });
+    $("goal-close").addEventListener("click", closeGoalForm);
+    $("goal-panel").addEventListener("click", function (e) { if (e.target === $("goal-panel")) closeGoalForm(); });
+    $("goal-form").addEventListener("submit", saveGoal);
+    $("goal-rest-add").addEventListener("click", addRestDate);
+    ["goal-start-page", "goal-end-page", "goal-start-date", "goal-due-date"].forEach(function (id) {
+      $(id).addEventListener("input", renderGoalPreview);
     });
     $("composer").addEventListener("submit", onSend);
     $("composer-input").addEventListener("input", autoGrowComposer);

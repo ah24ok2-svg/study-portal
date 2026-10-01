@@ -68,6 +68,7 @@
             <h2 id="detail-name" class="detail-name"></h2>
             <div class="segmented" role="tablist">
               <button id="seg-messages" type="button" role="tab" aria-selected="true" data-view="messages">やりとり</button>
+              <button id="seg-plan" type="button" role="tab" aria-selected="false" data-view="plan">計画</button>
               <button id="seg-submissions" type="button" role="tab" aria-selected="false" data-view="submissions">提出物 <span id="submission-count" class="count"></span></button>
             </div>
           </div>
@@ -81,6 +82,14 @@
               <textarea id="composer-input" class="input composer-input" rows="1" maxlength="1000" placeholder="返信を入力" aria-label="返信"></textarea>
               <button id="composer-send" type="submit" class="btn btn-primary composer-send" disabled>送信</button>
             </form>
+          </div>
+
+          <div id="view-plan" class="detail-view plan-panel" hidden>
+            <div class="plan-toolbar">
+              <button id="add-goal" type="button" class="btn btn-primary">＋ 目標を追加</button>
+            </div>
+            <p id="tutor-plan-error" class="inline-error plan-error" role="alert" hidden></p>
+            <div id="tutor-plan-root" class="plan-root"></div>
           </div>
 
           <div id="view-submissions" class="detail-view submissions-view" hidden>
@@ -112,7 +121,64 @@
     </div>
   </div>
 
+  <!-- 目標の追加・編集（spec §14.6） -->
+  <div id="goal-panel" class="sheet-backdrop" hidden>
+    <form id="goal-form" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="goal-form-title" novalidate>
+      <div class="sheet-head">
+        <h2 id="goal-form-title">目標を追加</h2>
+        <button id="goal-close" type="button" class="icon-button" aria-label="閉じる">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <label class="field-label" for="goal-title">テキスト名</label>
+      <input id="goal-title" class="input" type="text" maxlength="40" placeholder="例: 青チャート 数学IA" required>
+
+      <div class="goal-row">
+        <div>
+          <label class="field-label" for="goal-start-page">始めのページ</label>
+          <input id="goal-start-page" class="input" type="number" inputmode="numeric" min="1" max="10000" required>
+        </div>
+        <span class="goal-row-sep">〜</span>
+        <div>
+          <label class="field-label" for="goal-end-page">終わりのページ</label>
+          <input id="goal-end-page" class="input" type="number" inputmode="numeric" min="1" max="10000" required>
+        </div>
+      </div>
+
+      <div class="goal-row">
+        <div>
+          <label class="field-label" for="goal-start-date">開始日</label>
+          <input id="goal-start-date" class="input" type="date" required>
+        </div>
+        <span class="goal-row-sep">〜</span>
+        <div>
+          <label class="field-label" for="goal-due-date">期限</label>
+          <input id="goal-due-date" class="input" type="date" required>
+        </div>
+      </div>
+
+      <p class="field-label">休みの曜日</p>
+      <div id="goal-weekdays" class="weekday-toggles" role="group" aria-label="休みの曜日"></div>
+
+      <p class="field-label">休みの日付</p>
+      <div class="rest-date-add">
+        <input id="goal-rest-date" class="input" type="date" aria-label="休みにする日付">
+        <button id="goal-rest-add" type="button" class="btn btn-secondary">追加</button>
+      </div>
+      <ul id="goal-rest-dates" class="rest-dates"></ul>
+
+      <p id="goal-preview" class="goal-preview"></p>
+      <p id="goal-error" class="inline-error" role="alert" hidden></p>
+      <div class="sheet-actions">
+        <button id="goal-save" type="submit" class="btn btn-primary btn-block">保存</button>
+      </div>
+    </form>
+  </div>
+
   <script src="../config.js"></script>
+  <script src="../plan.js"></script>
+  <script src="../plan-ui.js"></script>
   <script src="../decor.js" defer></script>
   <script src="tutor.js" defer></script>
 </body>

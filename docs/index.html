@@ -54,6 +54,12 @@
       </form>
     </main>
 
+    <!-- 計画（spec §14） -->
+    <main id="tab-plan" class="tab-panel plan-panel" role="tabpanel" aria-labelledby="tabbtn-plan" hidden>
+      <p id="plan-error" class="inline-error plan-error" role="alert" hidden></p>
+      <div id="plan-root" class="plan-root"></div>
+    </main>
+
     <!-- 提出 -->
     <main id="tab-submit" class="tab-panel submit-panel" role="tabpanel" aria-labelledby="tabbtn-submit" hidden>
       <!-- idle -->
@@ -150,6 +156,10 @@
         <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><path d="M5 5h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         <span>やりとり</span>
       </button>
+      <button id="tabbtn-plan" type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-plan" data-tab="plan">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 9.5h16M8.5 3v4M15.5 3v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8.5 14.5l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>計画</span>
+      </button>
       <button id="tabbtn-submit" type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-submit" data-tab="submit">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><path d="M12 16V4M7 9l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <span>提出</span>
@@ -184,6 +194,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
   <script src="config.js"></script>
   <script src="decor.js" defer></script>
+  <script src="plan.js" defer></script>
+  <script src="plan-ui.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

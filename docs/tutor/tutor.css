@@ -102,7 +102,7 @@
 
 .segmented {
   grid-area: seg;
-  display: grid; grid-template-columns: 1fr 1fr;
+  display: grid; grid-template-columns: repeat(3, 1fr);
   padding: 3px; background: #ece7dc; border-radius: 12px;
 }
 .segmented button {
@@ -159,7 +159,8 @@
   .detail-pane { display: block; }
   .back-button { display: none; }
   .detail-head { grid-template-columns: 1fr auto; grid-template-areas: "name seg"; padding: 10px 16px; }
-  .segmented { width: 260px; }
+  .segmented { width: 270px; }
+  .segmented button { font-size: 13px; }
   .detail-placeholder {
     display: grid; place-items: center; height: 100%;
     color: var(--ink-soft); text-shadow: var(--halo);
@@ -168,3 +169,26 @@
   .detail-view .message-list { padding-left: 20px; padding-right: 20px; }
   .msg { max-width: 70%; }
 }
+
+/* ---------- 計画（spec §14.6） ---------- */
+
+.plan-toolbar { display: flex; justify-content: flex-end; padding: 12px 16px 0; }
+.plan-toolbar .btn { min-height: 40px; padding: 0 16px; font-size: 14px; }
+.goal-actions .icon-button { width: 36px; height: 36px; }
+.goal-sheet { max-height: calc(100dvh - 40px); overflow-y: auto; max-width: 440px; }
+.goal-sheet .field-label { margin-top: 14px; }
+.goal-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 8px; }
+.goal-row-sep { padding-bottom: 12px; color: var(--ink-soft); }
+.weekday-toggles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.weekday-toggles button {
+  min-height: 40px; border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--surface); font-weight: 700; cursor: pointer;
+}
+.weekday-toggles button[aria-pressed="true"] { background: #f1ede6; border-color: #b5ada3; color: var(--ink-soft); text-decoration: line-through; }
+.rest-date-add { display: flex; gap: 8px; }
+.rest-date-add .btn { flex: none; min-height: 46px; }
+.rest-dates { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.rest-dates li { display: flex; align-items: center; gap: 2px; padding: 2px 4px 2px 10px; background: #f1ede6; border-radius: 999px; font-size: 13px; }
+.rest-dates button { width: 28px; height: 28px; border: 0; background: transparent; color: var(--ink-soft); cursor: pointer; font-size: 16px; }
+.goal-preview { margin: 16px 0 8px; padding: 10px 12px; background: var(--primary-soft); border-radius: 10px; font-size: 14px; font-weight: 700; }
+.goal-preview:empty { display: none; }

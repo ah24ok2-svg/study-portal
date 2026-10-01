@@ -81,7 +81,8 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 - エラーメッセージは生徒が読んで対処できる言葉にする。技術用語やスタックトレースを出さない
 - 生徒に見せる画面は幅375pxを基準にする
 - コメントは「なぜそうしたか」を書く。「何をしているか」はコードで読める
-- GAS側は `Code.js` に全部入れず、`auth.js` / `upload.js` / `messages.js` / `tutor.js` / `push.js` に分ける
+- GAS側は `Code.js` に全部入れず、`auth.js` / `upload.js` / `messages.js` / `tutor.js` / `push.js` / `plan.js` に分ける
+- 学習計画の日ごとの割り当ては保存しない。`docs/plan.js` が端末で計算する（spec.md §14）。生徒アプリと講師アプリで同じファイルを使い、計算を二重に書かない
 - 講師 API は `authenticateTutor(req.tutorToken)` を必ず通す。生徒の `token` では講師 API を呼べないようにする
 
 ---
@@ -107,3 +108,4 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 - [x] v2 段階A: 講師アプリ（Google ログイン、一覧・返信）
 - [x] v2 段階B: 生徒アプリで書き込み済みPDFを閲覧
 - [x] v2 段階C: 講師端末へのプッシュ通知（iPad で受信を確認）
+- [ ] v3: 学習計画（目標からの逆算・カレンダー・6時の自動組み替え）。実機での確認待ち

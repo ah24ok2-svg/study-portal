@@ -6,13 +6,23 @@
 const SHEET = {
   STUDENTS: "students",
   MESSAGES: "messages",
-  SUBMISSIONS: "submissions"
+  SUBMISSIONS: "submissions",
+  GOALS: "goals",
+  GOAL_PROGRESS: "goal_progress"
 };
 
 const HEADERS = {
   students: ["student_id", "name", "name_slug", "token_hash", "folder_id", "active", "created_at"],
   messages: ["message_id", "student_id", "sender", "body", "created_at", "read_by_student", "read_by_tutor"],
-  submissions: ["submission_id", "student_id", "file_id", "file_name", "mime_type", "size_bytes", "note", "created_at"]
+  submissions: ["submission_id", "student_id", "file_id", "file_name", "mime_type", "size_bytes", "note", "created_at"],
+  goals: ["goal_id", "student_id", "title", "start_page", "end_page", "start_date", "due_date", "rest_weekdays", "rest_dates", "active", "created_at", "updated_at"],
+  goal_progress: ["progress_id", "goal_id", "student_id", "study_date", "through_page", "updated_at"]
+};
+
+// Sheets が "2026-10-01" を日付型に、"[0,6]" 以外の値を数値に変えないよう、書式なしテキストにする列（spec §14.4）
+const TEXT_COLUMNS = {
+  goals: ["F:F", "G:G", "H:H", "I:I"],
+  goal_progress: ["D:D"]
 };
 
 const LOCK_TIMEOUT_MS = 10 * 1000;
@@ -34,7 +44,12 @@ function doPost(e) {
       tutorSendMessage: handleTutorSendMessage,
       tutorRegisterPush: handleTutorRegisterPush,
       tutorUnregisterPush: handleTutorUnregisterPush,
-      tutorTestPush: handleTutorTestPush
+      tutorTestPush: handleTutorTestPush,
+      getPlan: handleGetPlan,
+      setProgress: handleSetProgress,
+      tutorGetPlan: handleTutorGetPlan,
+      tutorSaveGoal: handleTutorSaveGoal,
+      tutorDeleteGoal: handleTutorDeleteGoal
     };
     const handler = Object.prototype.hasOwnProperty.call(handlers, req.action) ? handlers[req.action] : null;
     if (!handler) return json(fail("VALIDATION_ERROR", "不正なリクエストです"));

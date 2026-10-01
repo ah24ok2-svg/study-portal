@@ -7,6 +7,7 @@
   // GAS は1回の応答に1〜2秒かかるので、前回の表示を保存しておき、開いた瞬間に出す
   const MESSAGES_CACHE_KEY = "tutorapp.cache.messages";
   const HISTORY_CACHE_KEY = "tutorapp.cache.history";
+  const PLAN_CACHE_KEY = "tutorapp.cache.plan";
   const MESSAGES_CACHE_LIMIT = 100;
   const POLL_INTERVAL_MS = 30 * 1000;
   const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -41,6 +42,10 @@
     pending: [],
     pollTimer: null,
     loadingMessages: false,
+    planView: null,
+    loadingPlan: false,
+    // 朝6時をまたいだら計画を取り直すため、最後に見た「勉強の日付」を覚えておく
+    lastStudyDate: null,
     submit: {
       status: "idle", // idle | editing | uploading | done
       mode: null,     // images | pdf
@@ -80,6 +85,7 @@
   function clearCaches() {
     storageRemove(MESSAGES_CACHE_KEY);
     storageRemove(HISTORY_CACHE_KEY);
+    storageRemove(PLAN_CACHE_KEY);
   }
 
   // ---------------------------------------------------------------------------
@@ -191,6 +197,8 @@
     state.lastCreatedAt = null;
     state.messagesLoaded = false;
     state.pending = [];
+    state.planView = null;
+    $("plan-root").replaceChildren();
     renderMessages();
     resetSubmit();
     closeViewer();
@@ -238,7 +246,9 @@
       btn.setAttribute("aria-selected", String(btn.dataset.tab === tab));
     });
     $("tab-messages").hidden = tab !== "messages";
+    $("tab-plan").hidden = tab !== "plan";
     $("tab-submit").hidden = tab !== "submit";
+    if (tab === "plan") loadPlan();
     if (tab === "messages") scrollMessagesToBottom();
     // 先生が Drive で書き込んだかどうかは生徒側では気づけないので、開くたびに取り直す
     if (tab === "submit" && state.submit.status === "idle") loadHistory();
@@ -270,6 +280,66 @@
     }
     const history = readCache(HISTORY_CACHE_KEY);
     if (history) renderHistory(history);
+    const plan = readCache(PLAN_CACHE_KEY);
+    if (plan) getPlanView().setData(plan);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 計画（spec §14）
+
+  function getPlanView() {
+    if (!state.planView) {
+      state.planView = new window.PlanView($("plan-root"), {
+        editable: true,
+        order: ["day", "calendar", "goals"],
+        emptyText: "先生が目標を立てると、ここに毎日のやることが表示されます",
+        onSetProgress: function (goalId, studyDate, throughPage) {
+          $("plan-error").hidden = true;
+          return api("setProgress", { goalId: goalId, studyDate: studyDate, throughPage: throughPage }).then(function () {
+            writeCache(PLAN_CACHE_KEY, state.planView.data);
+          }).catch(function (err) {
+            // 過ぎた日になっていた等で弾かれたときは、最新の状態に揃える
+            if (err.code === "VALIDATION_ERROR") loadPlan();
+            throw new Error(err.code === "INVALID_TOKEN" ? "" : userMessage(err));
+          });
+        },
+        onError: function (message) {
+          if (!message) return;
+          $("plan-error").textContent = message + "（記録は保存されていません）";
+          $("plan-error").hidden = false;
+        }
+      });
+      state.planView.render();
+    }
+    return state.planView;
+  }
+
+  async function loadPlan() {
+    if (state.loadingPlan || !state.token) return;
+    state.loadingPlan = true;
+    const view = getPlanView();
+    try {
+      const data = await api("getPlan");
+      state.lastStudyDate = window.StudyPlan.studyDateNow();
+      writeCache(PLAN_CACHE_KEY, data);
+      view.setData(data);
+      $("plan-error").hidden = true;
+    } catch (err) {
+      if (err.code === "INVALID_TOKEN") return;
+      $("plan-error").textContent = userMessage(err);
+      $("plan-error").hidden = false;
+    } finally {
+      state.loadingPlan = false;
+    }
+  }
+
+  /** 開きっぱなしで朝6時をまたいだら、組み替え後の計画を取り直す */
+  function checkStudyDateRollover() {
+    const now = window.StudyPlan.studyDateNow();
+    if (state.lastStudyDate && now !== state.lastStudyDate) {
+      state.lastStudyDate = now;
+      loadPlan();
+    }
   }
 
   function addMessages(incoming) {
@@ -409,7 +479,10 @@
     stopPolling();
     // 画面が見えていない間はリクエストを出さない（電池と GAS の実行回数の節約）
     if (document.visibilityState === "hidden") return;
-    state.pollTimer = setInterval(function () { loadMessages(); }, POLL_INTERVAL_MS);
+    state.pollTimer = setInterval(function () {
+      loadMessages();
+      checkStudyDateRollover();
+    }, POLL_INTERVAL_MS);
   }
 
   function stopPolling() {
@@ -424,6 +497,8 @@
     } else {
       loadMessages();
       if (state.tab === "submit" && state.submit.status === "idle") loadHistory();
+      if (state.tab === "plan") loadPlan();
+      checkStudyDateRollover();
       startPolling();
     }
   }
