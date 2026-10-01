@@ -159,7 +159,8 @@
       card.appendChild(stats);
 
       if (p.paceUp && !p.overdue && !p.finished) {
-        card.appendChild(el("p", "goal-note", "最初の予定（1日" + p.originalPace + "ページ）より多くなっています。期限の見直しも検討してください"));
+        // 期限はテストの日なので動かせない。見直しは促さず、遅れを取り戻すために量が増えていることだけを伝える
+        card.appendChild(el("p", "goal-note", "遅れを取り戻すため、1日の量が最初の予定（" + p.originalPace + "ページ）より増えています"));
       }
       wrap.appendChild(card);
     });
