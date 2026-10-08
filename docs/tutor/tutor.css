@@ -192,3 +192,13 @@
 .rest-dates button { width: 28px; height: 28px; border: 0; background: transparent; color: var(--ink-soft); cursor: pointer; font-size: 16px; }
 .goal-preview { margin: 16px 0 8px; padding: 10px 12px; background: var(--primary-soft); border-radius: 10px; font-size: 14px; font-weight: 700; }
 .goal-preview:empty { display: none; }
+
+.spread-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.spread-option {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 46px; padding: 0 12px;
+  border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--surface); font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.spread-option:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); }
+.spread-option input { accent-color: var(--primary); width: 18px; height: 18px; margin: 0; }

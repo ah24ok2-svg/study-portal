@@ -75,4 +75,8 @@ module.exports = function (t) {
   t("spreads odd start", sp(31, 39) === "[[31,31],[32,33],[34,35],[36,37],[38,39]]", sp(31, 39));
   t("spreads single page", sp(7, 7) === "[[7,7]]" && sp(8, 8) === "[[8,8]]");
   t("spreads cover all pages", P.spreadsOf({ from: 3, to: 98 }).reduce((n, s) => n + s.to - s.from + 1, 0) === 96);
+  const so = (from, to) => JSON.stringify(P.spreadsOf({ from, to }, "odd").map((s) => [s.from, s.to]));
+  t("odd spreads: 10-13", so(10, 13) === "[[10,10],[11,12],[13,13]]", so(10, 13));
+  t("odd spreads: 31-39", so(31, 39) === "[[31,32],[33,34],[35,36],[37,38],[39,39]]", so(31, 39));
+  t("even is default", sp(10, 13) === JSON.stringify(P.spreadsOf({ from: 10, to: 13 }, "even").map((s) => [s.from, s.to])));
 };

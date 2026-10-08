@@ -825,6 +825,8 @@
     $("goal-start-date").value = goal ? goal.startDate : planToday();
     $("goal-due-date").value = goal ? goal.dueDate : "";
     $("goal-rest-date").value = "";
+    const spread = goal && goal.spreadStart === "odd" ? "odd" : "even";
+    document.querySelectorAll("input[name=goal-spread]").forEach(function (r) { r.checked = r.value === spread; });
     state.formRestWeekdays = goal ? goal.restWeekdays.slice() : [];
     state.formRestDates = goal ? goal.restDates.slice() : [];
     showError($("goal-error"), "");
@@ -848,12 +850,27 @@
       startDate: $("goal-start-date").value,
       dueDate: $("goal-due-date").value,
       restWeekdays: state.formRestWeekdays.slice().sort(),
-      restDates: state.formRestDates.slice().sort()
+      restDates: state.formRestDates.slice().sort(),
+      spreadStart: (document.querySelector("input[name=goal-spread]:checked") || {}).value || "even"
     };
+  }
+
+  /** 見開きの選択肢を、入力した始めのページで例示する。「10と11」より実際のページ番号の方が手元のテキストと見比べやすいため */
+  function renderSpreadLabels() {
+    const raw = Number($("goal-start-page").value);
+    const s = Number.isInteger(raw) && raw >= 1 ? raw : 10;
+    function pair(startParity) {
+      let first = s % 2 === startParity ? s : s - 1;
+      if (first < 1) first += 2;
+      return "p." + first + " と " + (first + 1) + " が見開き";
+    }
+    $("goal-spread-even").textContent = pair(0);
+    $("goal-spread-odd").textContent = pair(1);
   }
 
   /** 入力に合わせて「何日でどれくらいのペースか」をその場で見せる。期限の決め方の目安になるため */
   function renderGoalPreview() {
+    renderSpreadLabels();
     const g = readGoalForm();
     const preview = $("goal-preview");
     if (!Number.isInteger(g.startPage) || !Number.isInteger(g.endPage) || g.endPage < g.startPage || !g.startDate || !g.dueDate || g.dueDate < g.startDate) {

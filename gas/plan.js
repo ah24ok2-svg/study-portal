@@ -56,6 +56,8 @@ function rowToGoal(r) {
     restWeekdays: parseJsonArray(r.values[7]).filter(function (n) { return Number.isInteger(n) && n >= 0 && n <= 6; }),
     restDates: parseJsonArray(r.values[8]).filter(isValidDateKey),
     active: isTrue(r.values[9]),
+    // 列を足す前の目標は空欄。今までどおり偶数から始まる組として扱う
+    spreadStart: r.values[12] === "odd" ? "odd" : "even",
     rowNumber: r.rowNumber
   };
 }
@@ -64,7 +66,8 @@ function rowToGoal(r) {
 function publicGoal(g) {
   return {
     goalId: g.goalId, title: g.title, startPage: g.startPage, endPage: g.endPage,
-    startDate: g.startDate, dueDate: g.dueDate, restWeekdays: g.restWeekdays, restDates: g.restDates
+    startDate: g.startDate, dueDate: g.dueDate, restWeekdays: g.restWeekdays, restDates: g.restDates,
+    spreadStart: g.spreadStart
   };
 }
 
@@ -232,9 +235,12 @@ function validateGoalInput(input) {
   }
   if (!hasStudyDay) throw new AppError("VALIDATION_ERROR", "開始日から期限までに勉強する日がありません。休みを見直してください");
 
+  const spreadStart = input.spreadStart === undefined ? "even" : input.spreadStart;
+  if (spreadStart !== "even" && spreadStart !== "odd") throw new AppError("VALIDATION_ERROR", "見開きの組み方を選んでください");
+
   return {
     title: title, startPage: startPage, endPage: endPage, startDate: input.startDate, dueDate: input.dueDate,
-    restWeekdays: restWeekdays, restDates: restDates
+    restWeekdays: restWeekdays, restDates: restDates, spreadStart: spreadStart
   };
 }
 
@@ -254,7 +260,7 @@ function handleTutorSaveGoal(req) {
       const existing = goals.find(function (x) { return x.goalId === goalId && x.studentId === student.studentId && x.active; });
       if (!existing) throw new AppError("VALIDATION_ERROR", "目標が見つかりません。画面を開き直してください");
       sheet.getRange(existing.rowNumber, 3, 1, row.length).setValues([row]);
-      sheet.getRange(existing.rowNumber, 12).setValue(now);
+      sheet.getRange(existing.rowNumber, 12, 1, 2).setValues([[now, g.spreadStart]]);
       return goalId;
     }
     const activeCount = goals.filter(function (x) { return x.studentId === student.studentId && x.active; }).length;
@@ -262,7 +268,7 @@ function handleTutorSaveGoal(req) {
       throw new AppError("VALIDATION_ERROR", "目標は1人" + GOALS_PER_STUDENT_MAX + "件までです。終わった目標を削除してください");
     }
     const id = newId("goal_");
-    sheet.appendRow([id, student.studentId].concat(row).concat([true, now, now]));
+    sheet.appendRow([id, student.studentId].concat(row).concat([true, now, now, g.spreadStart]));
     return id;
   });
   return ok({ goalId: savedId });

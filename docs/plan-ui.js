@@ -393,7 +393,7 @@
       const pages = el("div", "page-checks");
       pages.setAttribute("role", "group");
       pages.setAttribute("aria-label", g.title + " のページ");
-      P.spreadsOf(e).forEach(function (spread) {
+      P.spreadsOf(e, g.spreadStart).forEach(function (spread) {
         const row = el("div", "spread-row");
         for (let n = spread.from; n <= spread.to; n++) {
           const checked = e.record !== null && n <= e.record;

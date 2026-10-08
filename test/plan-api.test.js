@@ -62,6 +62,15 @@ module.exports = function (t) {
   t("order: delete earlier rejected", sp({ throughPage: null }).error?.code === "VALIDATION_ERROR");
   t("order: later first then earlier", sp({ studyDate: add(today, 1), throughPage: null }).ok && sp({ throughPage: null }).ok);
 
+  // 見開きの組み方（spec §14.7）
+  t("spreadStart default even", call({ action: "getPlan", token: a.token }).data.goals[0].spreadStart === "even");
+  t("spreadStart invalid", call({ action: "tutorSaveGoal", tutorToken: tt, studentId: a.studentId, goal: goal({ spreadStart: "left" }) }).error?.code === "VALIDATION_ERROR");
+  m.cache.clear();
+  r = call({ action: "tutorSaveGoal", tutorToken: tt, studentId: a.studentId, goal: goal({ goalId: gid, spreadStart: "odd" }) });
+  t("spreadStart saved", r.ok && sheets.goals.data[1][12] === "odd" && call({ action: "getPlan", token: a.token }).data.goals[0].spreadStart === "odd");
+  sheets.goals.data[1].length = 12; // 列を足す前の行を再現
+  t("legacy row treated as even", call({ action: "getPlan", token: a.token }).data.goals[0].spreadStart === "even");
+
   // 編集と削除
   r = call({ action: "tutorSaveGoal", tutorToken: tt, studentId: a.studentId, goal: goal({ goalId: gid, title: "テキストII", endPage: 150 }) });
   t("edit", r.ok && sheets.goals.data[1][2] === "テキストII" && sheets.goals.data[1][4] === 150);

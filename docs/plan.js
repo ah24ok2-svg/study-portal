@@ -151,13 +151,14 @@
   }
 
   /**
-   * その日の範囲を見開きごとに分ける（spec §14.7）。教科書の見開きは「偶数・奇数」の組なので、
-   * p.31〜39 なら [31] [32-33] … [38-39] になる
+   * その日の範囲を見開きごとに分ける（spec §14.7）。組み方はテキストによって違う。
+   * spreadStart が "even" なら p.31〜39 は [31] [32-33] … [38-39]、"odd" なら [31-32] … [39]
    */
-  function spreadsOf(entry) {
+  function spreadsOf(entry, spreadStart) {
+    const startParity = spreadStart === "odd" ? 1 : 0;
     const spreads = [];
     for (let p = entry.from; p <= entry.to; ) {
-      const end = Math.min(entry.to, p % 2 === 0 ? p + 1 : p);
+      const end = Math.min(entry.to, p % 2 === startParity ? p + 1 : p);
       spreads.push({ from: p, to: end });
       p = end + 1;
     }

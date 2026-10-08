@@ -787,6 +787,7 @@ Script Properties に追加する値:
 | J | active | `TRUE` / `FALSE`。削除は `FALSE` にする |
 | K | created_at | ISO 8601 |
 | L | updated_at | ISO 8601 |
+| M | spread_start | 見開きの組み方 `even` / `odd`（§14.7）。空欄は `even` |
 
 **シート `goal_progress`**
 | 列 | 名前 | 説明 |
@@ -810,7 +811,7 @@ Script Properties に追加する値:
 
 **講師向け**（`tutorToken` 必須）
 - `tutorGetPlan` `{ studentId }` → `{ goals, progress, today }`
-- `tutorSaveGoal` `{ studentId, goal: { goalId?, title, startPage, endPage, startDate, dueDate, restWeekdays, restDates } }` → `{ goalId }`。`goalId` があれば更新
+- `tutorSaveGoal` `{ studentId, goal: { goalId?, title, startPage, endPage, startDate, dueDate, restWeekdays, restDates, spreadStart } }` → `{ goalId }`。`goalId` があれば更新
 - `tutorDeleteGoal` `{ goalId }` → `{}`（`active` を `FALSE` にする。記録は残す）
 
 ### 14.6 画面
@@ -827,7 +828,11 @@ Script Properties に追加する値:
 ### 14.7 取り組んだページの写真
 生徒がやったページを撮って提出し、講師が本当にやったかを確認できるようにする。**写真は任意**（生徒によって求める度合いが違うため。必須にする設定は将来、生徒ごとに足す）。
 
-- 見開きごとに1枚。見開きは「偶数・奇数」の組（p.50–51、p.52–53）。その日の範囲の端で組が切れる場合は1ページだけの枠になる
+- 見開きごとに1枚。見開きの組み方はテキストによって違うので、**目標ごとに講師が選ぶ**（`spread_start`）
+  - `even`: 偶数ページから始まる組（p.10–11、p.12–13）。既定
+  - `odd`: 奇数ページから始まる組（p.11–12、p.13–14）
+  - その日の範囲の端で組が切れる場合は1ページだけの枠になる
+  - 途中で組み方を変えると、撮った写真の枠と合わなくなる（写真は最初のページで探すため）
 - 写真を撮ると、その見開きの最後のページまでチェックが付く（撮る＝やった。二度手間をなくすため）
 - 撮れるのは今日と明日以降の分だけ（§14.3 と同じ）。同じ枠で撮り直すと前の写真は Drive のゴミ箱に入る。削除もできる
 - 画像は提出と同じく長辺2000px・JPEG品質0.8に縮小してから送る

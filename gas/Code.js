@@ -16,7 +16,7 @@ const HEADERS = {
   students: ["student_id", "name", "name_slug", "token_hash", "folder_id", "active", "created_at"],
   messages: ["message_id", "student_id", "sender", "body", "created_at", "read_by_student", "read_by_tutor"],
   submissions: ["submission_id", "student_id", "file_id", "file_name", "mime_type", "size_bytes", "note", "created_at"],
-  goals: ["goal_id", "student_id", "title", "start_page", "end_page", "start_date", "due_date", "rest_weekdays", "rest_dates", "active", "created_at", "updated_at"],
+  goals: ["goal_id", "student_id", "title", "start_page", "end_page", "start_date", "due_date", "rest_weekdays", "rest_dates", "active", "created_at", "updated_at", "spread_start"],
   goal_progress: ["progress_id", "goal_id", "student_id", "study_date", "through_page", "updated_at"],
   plan_photos: ["photo_id", "goal_id", "student_id", "study_date", "from_page", "to_page", "file_id", "created_at"]
 };
