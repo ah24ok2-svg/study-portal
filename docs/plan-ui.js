@@ -297,8 +297,10 @@
     const self = this;
     const date = this.selected;
     const wrap = el("section", "plan-day");
-    const title = date === this.data.today ? "今日（" + md(date) + "）のやること" : fullDate(date) + " のやること";
-    wrap.appendChild(el("h3", "plan-day-title", title));
+    // 「今日（10/8(木)）」とカッコが重なると読みにくいので、日付は見出しの横に小さく添える
+    const heading = el("h3", "plan-day-title", date === this.data.today ? "今日のやること" : fullDate(date) + " のやること");
+    if (date === this.data.today) heading.appendChild(el("span", "plan-day-date", fullDate(date)));
+    wrap.appendChild(heading);
 
     const entries = P.entriesOn(this.plans, date);
     if (entries.length === 0) {

@@ -491,6 +491,7 @@ body.viewer-open { overflow: hidden; }
 .lg-rest { background: #f1ede6; }
 
 .plan-day-title { margin: 0 0 8px; font-size: 16px; text-shadow: var(--halo); }
+.plan-day-date { margin-left: 8px; font-size: 13px; font-weight: 400; color: var(--ink-soft); }
 .plan-day-empty { margin: 12px 0; }
 .plan-day-hint { margin-top: 8px; }
 .todo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
