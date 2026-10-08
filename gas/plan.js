@@ -74,9 +74,10 @@ function publicGoal(g) {
  */
 function ensurePlanSheets() {
   const ss = SpreadsheetApp.openById(getProp("SPREADSHEET_ID"));
-  if (ss.getSheetByName(SHEET.GOALS) && ss.getSheetByName(SHEET.GOAL_PROGRESS)) return;
+  const names = [SHEET.GOALS, SHEET.GOAL_PROGRESS, SHEET.PLAN_PHOTOS];
+  if (names.every(function (n) { return ss.getSheetByName(n); })) return;
   withLock(function () {
-    [SHEET.GOALS, SHEET.GOAL_PROGRESS].forEach(function (name) {
+    names.forEach(function (name) {
       if (ss.getSheetByName(name)) return;
       const sheet = ss.insertSheet(name);
       sheet.setFrozenRows(1);
@@ -109,6 +110,9 @@ function planPayload(studentId) {
     goals: goals.map(publicGoal),
     // 削除した目標の記録は返さない（記録自体は消さずに残す）
     progress: readProgress(studentId).filter(function (p) { return ids[p.goalId]; }),
+    photos: readPhotos(studentId)
+      .filter(function (p) { return ids[p.goalId]; })
+      .map(function (p) { return { photoId: p.photoId, goalId: p.goalId, studyDate: p.studyDate, fromPage: p.fromPage, toPage: p.toPage }; }),
     today: planToday()
   };
 }
@@ -122,23 +126,31 @@ function handleGetPlan(req) {
   return ok(planPayload(student.studentId));
 }
 
-function handleSetProgress(req) {
-  const student = authenticate(req.token);
-  ensurePlanSheets();
-  const goal = typeof req.goalId === "string"
-    ? readGoals(student.studentId).find(function (g) { return g.goalId === req.goalId; })
+/**
+ * 生徒が記録（チェック・写真）を変えてよい目標と日付かを確かめ、目標を返す。
+ * 他の生徒の目標を指定されても、存在するかどうかを区別できない応答にする
+ */
+function editableGoal(student, goalId, studyDate) {
+  const goal = typeof goalId === "string"
+    ? readGoals(student.studentId).find(function (g) { return g.goalId === goalId; })
     : null;
-  // 他の生徒の目標を指定されても、存在するかどうかを区別できない応答にする
   if (!goal) throw new AppError("VALIDATION_ERROR", "目標が見つかりません。画面を開き直してください");
 
   const today = planToday();
-  const studyDate = req.studyDate;
   if (!isValidDateKey(studyDate)) throw new AppError("VALIDATION_ERROR", "日付が正しくありません");
   // 過ぎた日を後から変えると今日のノルマが変わってしまうので受け付けない（spec §14.3）
   if (studyDate < today) throw new AppError("VALIDATION_ERROR", "過ぎた日の記録は変更できません。画面を開き直してください");
   if (studyDate < goal.startDate || studyDate > (goal.dueDate > today ? goal.dueDate : today)) {
     throw new AppError("VALIDATION_ERROR", "この日は計画の期間外です");
   }
+  return goal;
+}
+
+function handleSetProgress(req) {
+  const student = authenticate(req.token);
+  ensurePlanSheets();
+  const studyDate = req.studyDate;
+  const goal = editableGoal(student, req.goalId, studyDate);
 
   let through = null;
   if (req.throughPage !== null && req.throughPage !== undefined) {
@@ -268,4 +280,139 @@ function handleTutorDeleteGoal(req) {
     sheet.getRange(goal.rowNumber, 12).setValue(nowIso());
   });
   return ok({});
+}
+
+// ---------------------------------------------------------------------------
+// 取り組んだページの写真（spec §14.7）
+
+const PLAN_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+const PLAN_PHOTO_FOLDER_NAME = "計画の写真";
+
+function readPhotos(studentId) {
+  return readRows(SHEET.PLAN_PHOTOS)
+    .filter(function (r) { return studentId === null || r.values[2] === studentId; })
+    .map(function (r) {
+      return {
+        photoId: String(r.values[0]), goalId: String(r.values[1]), studentId: String(r.values[2]),
+        studyDate: toDateKey(r.values[3]), fromPage: Number(r.values[4]), toPage: Number(r.values[5]),
+        fileId: String(r.values[6]), rowNumber: r.rowNumber
+      };
+    })
+    .filter(function (p) { return p.studyDate; });
+}
+
+/** 生徒フォルダの中の「計画の写真」フォルダ。答案と混ざらないよう分ける */
+function planPhotoFolder(student) {
+  const parent = ensureStudentFolder(student);
+  return withLock(function () {
+    const found = parent.getFoldersByName(PLAN_PHOTO_FOLDER_NAME);
+    return found.hasNext() ? found.next() : parent.createFolder(PLAN_PHOTO_FOLDER_NAME);
+  });
+}
+
+function trashQuietly(fileId) {
+  try {
+    DriveApp.getFileById(fileId).setTrashed(true);
+  } catch (err) {
+    // 先生が手で消していた等。写真の記録の更新は止めない
+    console.error(err);
+  }
+}
+
+function handleUploadPlanPhoto(req) {
+  const student = authenticate(req.token);
+  ensurePlanSheets();
+  const goal = editableGoal(student, req.goalId, req.studyDate);
+
+  const from = req.fromPage;
+  const to = req.toPage;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < goal.startPage || to > goal.endPage || to - from < 0 || to - from > 1) {
+    throw new AppError("VALIDATION_ERROR", "写真のページが正しくありません。画面を開き直してください");
+  }
+  if (typeof req.dataBase64 !== "string" || req.dataBase64.length === 0) {
+    throw new AppError("VALIDATION_ERROR", "写真が空です");
+  }
+  if (estimateDecodedSize(req.dataBase64) > PLAN_PHOTO_MAX_BYTES) {
+    throw new AppError("FILE_TOO_LARGE", "写真が大きすぎます");
+  }
+  const bytes = decodeBase64(req.dataBase64);
+  // アプリは必ず JPEG に変換して送る。それ以外は受け付けない
+  if (bytes.length > PLAN_PHOTO_MAX_BYTES || !matchesMagicBytes("image/jpeg", bytes)) {
+    throw new AppError("UNSUPPORTED_TYPE", "写真を読み込めませんでした。撮り直してください");
+  }
+
+  const folder = planPhotoFolder(student);
+  const date = req.studyDate.replace(/-/g, "");
+  const title = Array.from(sanitizeFileName(goal.title)).slice(0, 30).join("") || "計画";
+  const pages = from === to ? "p" + from : "p" + from + "-" + to;
+  const file = folder.createFile(Utilities.newBlob(bytes, "image/jpeg", date + "_" + student.nameSlug + "_" + title + "_" + pages + ".jpg"));
+
+  let replacedFileId = null;
+  const photoId = withLock(function () {
+    const sheet = getSheet(SHEET.PLAN_PHOTOS);
+    const existing = readPhotos(student.studentId).find(function (p) {
+      return p.goalId === goal.goalId && p.studyDate === req.studyDate && p.fromPage === from;
+    });
+    if (existing) {
+      replacedFileId = existing.fileId;
+      sheet.getRange(existing.rowNumber, 6, 1, 3).setValues([[to, file.getId(), nowIso()]]);
+      return existing.photoId;
+    }
+    const id = newId("photo_");
+    sheet.appendRow([id, goal.goalId, student.studentId, req.studyDate, from, to, file.getId(), nowIso()]);
+    return id;
+  });
+  // 撮り直した前の写真は消さずにゴミ箱へ（30日は先生が戻せる）
+  if (replacedFileId) trashQuietly(replacedFileId);
+  return ok({ photoId: photoId });
+}
+
+function handleDeletePlanPhoto(req) {
+  const student = authenticate(req.token);
+  ensurePlanSheets();
+  const photo = typeof req.photoId === "string"
+    ? readPhotos(student.studentId).find(function (p) { return p.photoId === req.photoId; })
+    : null;
+  if (!photo) throw new AppError("VALIDATION_ERROR", "写真が見つかりません。画面を開き直してください");
+  if (photo.studyDate < planToday()) throw new AppError("VALIDATION_ERROR", "過ぎた日の写真は変更できません");
+
+  withLock(function () {
+    // ロック待ちの間に行がずれていないよう、IDで探し直してから消す
+    const current = readPhotos(student.studentId).find(function (p) { return p.photoId === photo.photoId; });
+    if (current) getSheet(SHEET.PLAN_PHOTOS).deleteRow(current.rowNumber);
+  });
+  trashQuietly(photo.fileId);
+  return ok({});
+}
+
+function photoPayload(photo) {
+  let file;
+  try {
+    file = DriveApp.getFileById(photo.fileId);
+  } catch (_) {
+    throw new AppError("VALIDATION_ERROR", "この写真は削除されています");
+  }
+  if (file.isTrashed()) throw new AppError("VALIDATION_ERROR", "この写真は削除されています");
+  const blob = file.getBlob();
+  return ok({ mimeType: blob.getContentType(), dataBase64: Utilities.base64Encode(blob.getBytes()) });
+}
+
+function handleGetPlanPhoto(req) {
+  const student = authenticate(req.token);
+  ensurePlanSheets();
+  const photo = typeof req.photoId === "string"
+    ? readPhotos(student.studentId).find(function (p) { return p.photoId === req.photoId; })
+    : null;
+  if (!photo) throw new AppError("VALIDATION_ERROR", "写真が見つかりません");
+  return photoPayload(photo);
+}
+
+function handleTutorGetPlanPhoto(req) {
+  authenticateTutor(req.tutorToken);
+  ensurePlanSheets();
+  const photo = typeof req.photoId === "string"
+    ? readPhotos(null).find(function (p) { return p.photoId === req.photoId; })
+    : null;
+  if (!photo) throw new AppError("VALIDATION_ERROR", "写真が見つかりません");
+  return photoPayload(photo);
 }

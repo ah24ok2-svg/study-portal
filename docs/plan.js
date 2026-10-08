@@ -150,6 +150,20 @@
     };
   }
 
+  /**
+   * その日の範囲を見開きごとに分ける（spec §14.7）。教科書の見開きは「偶数・奇数」の組なので、
+   * p.31〜39 なら [31] [32-33] … [38-39] になる
+   */
+  function spreadsOf(entry) {
+    const spreads = [];
+    for (let p = entry.from; p <= entry.to; ) {
+      const end = Math.min(entry.to, p % 2 === 0 ? p + 1 : p);
+      spreads.push({ from: p, to: end });
+      p = end + 1;
+    }
+    return spreads;
+  }
+
   /** 全目標ぶんをまとめて計算する */
   function computePlan(goals, progress, today) {
     return goals.map(function (g) { return computeGoal(g, progress, today); });
@@ -169,7 +183,8 @@
     isRestDay: isRestDay,
     computeGoal: computeGoal,
     computePlan: computePlan,
-    entriesOn: entriesOn
+    entriesOn: entriesOn,
+    spreadsOf: spreadsOf
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

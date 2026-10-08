@@ -36,6 +36,8 @@
    *   onError        (message) => void
    *   goalActions    (goal, container) => void。講師アプリの編集ボタンなどを足す
    *   emptyText      目標が1つも無いときの文言
+   *   onTakePhoto    (goal, entry, spread) => void。写真を撮る（生徒アプリのみ。spec §14.7）
+   *   onOpenPhoto    (photo, canEdit) => void。撮った写真を見る
    *   order          並び順。生徒は毎日チェックするので "day" を先頭に、講師は全体を見るので "goals" を先頭にする
    */
   function PlanView(root, options) {
@@ -50,7 +52,8 @@
   PlanView.prototype.setData = function (data) {
     const first = !this.data;
     const dayChanged = this.data && this.data.today !== data.today;
-    this.data = { goals: data.goals.slice(), progress: data.progress.slice(), today: data.today };
+    this.data = { goals: data.goals.slice(), progress: data.progress.slice(), photos: (data.photos || []).slice(), today: data.today };
+    this.uploading = this.uploading || {};
     if (first || dayChanged) {
       this.selected = data.today;
       this.month = data.today.slice(0, 7);
@@ -265,6 +268,34 @@
   // ---------------------------------------------------------------------------
   // その日のやること
 
+  function photoKey(goalId, date, from) {
+    return goalId + "|" + date + "|" + from;
+  }
+
+  PlanView.prototype.photoFor = function (goalId, date, from) {
+    return this.data.photos.find(function (p) { return p.goalId === goalId && p.studyDate === date && p.fromPage === from; }) || null;
+  };
+
+  /** 写真を送っている間は📷を「送信中」にする */
+  PlanView.prototype.setUploading = function (goalId, date, from, on) {
+    if (on) this.uploading[photoKey(goalId, date, from)] = true;
+    else delete this.uploading[photoKey(goalId, date, from)];
+    this.render();
+  };
+
+  PlanView.prototype.addPhoto = function (photo) {
+    this.data.photos = this.data.photos.filter(function (p) {
+      return !(p.goalId === photo.goalId && p.studyDate === photo.studyDate && p.fromPage === photo.fromPage);
+    });
+    this.data.photos.push(photo);
+    this.render();
+  };
+
+  PlanView.prototype.removePhoto = function (photoId) {
+    this.data.photos = this.data.photos.filter(function (p) { return p.photoId !== photoId; });
+    this.render();
+  };
+
   /** 後の日にチェックがあるか。あるうちは前の日のチェックを外させない（spec §14.3） */
   PlanView.prototype.laterChecked = function (goalId, date) {
     return this.data.progress.some(function (r) { return r.goalId === goalId && r.studyDate > date; });
@@ -291,6 +322,38 @@
     if (!window.confirm(label + " のチェックを外しますか？")) return;
     const next = page - 1;
     this.setProgress(goal.goalId, entry.date, next < entry.from ? null : next);
+  };
+
+  /** 見開きごとの📷。撮っていなければ「撮る」、撮っていれば「写真」、送信中は「送信中」 */
+  PlanView.prototype.renderPhotoButton = function (goal, entry, spread, canEdit) {
+    const self = this;
+    const photo = this.photoFor(goal.goalId, entry.date, spread.from);
+    const busy = !!this.uploading[photoKey(goal.goalId, entry.date, spread.from)];
+    const pagesLabel = spread.from === spread.to ? "p." + spread.from : "p." + spread.from + "〜" + spread.to;
+    if (!photo && !busy && !(canEdit && this.options.onTakePhoto)) return null;
+
+    const btn = el("button", "photo-btn" + (photo ? " has-photo" : "") + (busy ? " is-busy" : ""));
+    btn.type = "button";
+    const icon = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>';
+    if (busy) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="mini-spinner" aria-hidden="true"></span>';
+      btn.appendChild(el("span", "photo-label", "送信中"));
+      btn.setAttribute("aria-label", pagesLabel + " の写真を送信中");
+    } else if (photo) {
+      btn.innerHTML = icon;
+      btn.appendChild(el("span", "photo-label", "写真✓"));
+      btn.setAttribute("aria-label", pagesLabel + " の写真を見る");
+      btn.addEventListener("click", function () {
+        if (self.options.onOpenPhoto) self.options.onOpenPhoto(photo, canEdit, { goal: goal, entry: entry, spread: spread });
+      });
+    } else {
+      btn.innerHTML = icon;
+      btn.appendChild(el("span", "photo-label", "撮る"));
+      btn.setAttribute("aria-label", pagesLabel + " の写真を撮る");
+      btn.addEventListener("click", function () { self.options.onTakePhoto(goal, entry, spread); });
+    }
+    return btn;
   };
 
   PlanView.prototype.renderDay = function () {
@@ -326,29 +389,35 @@
       head.appendChild(count);
       li.appendChild(head);
 
-      // 1ページごとのボックス。押しながら進めることで達成感を出す（spec §14.3）
+      // 1ページごとのボックスを見開きごとに並べ、見開きごとに写真を撮れるようにする（spec §14.3, §14.7）
       const pages = el("div", "page-checks");
       pages.setAttribute("role", "group");
       pages.setAttribute("aria-label", g.title + " のページ");
-      for (let n = e.from; n <= e.to; n++) {
-        const checked = e.record !== null && n <= e.record;
-        const box = el("button", "page-check" + (checked ? " is-checked" : ""));
-        box.type = "button";
-        box.setAttribute("role", "checkbox");
-        box.setAttribute("aria-checked", String(checked));
-        box.setAttribute("aria-label", "p." + n);
-        box.disabled = !canEdit;
-        box.innerHTML = checked
-          ? '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-          : "";
-        box.appendChild(el("span", "page-num", String(n)));
-        if (canEdit) {
-          box.addEventListener("click", (function (page) {
-            return function () { self.togglePage(g, e, page); };
-          })(n));
+      P.spreadsOf(e).forEach(function (spread) {
+        const row = el("div", "spread-row");
+        for (let n = spread.from; n <= spread.to; n++) {
+          const checked = e.record !== null && n <= e.record;
+          const box = el("button", "page-check" + (checked ? " is-checked" : ""));
+          box.type = "button";
+          box.setAttribute("role", "checkbox");
+          box.setAttribute("aria-checked", String(checked));
+          box.setAttribute("aria-label", "p." + n);
+          box.disabled = !canEdit;
+          box.innerHTML = checked
+            ? '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+            : "";
+          box.appendChild(el("span", "page-num", String(n)));
+          if (canEdit) {
+            box.addEventListener("click", (function (page) {
+              return function () { self.togglePage(g, e, page); };
+            })(n));
+          }
+          row.appendChild(box);
         }
-        pages.appendChild(box);
-      }
+        const photoBtn = self.renderPhotoButton(g, e, spread, canEdit);
+        if (photoBtn) row.appendChild(photoBtn);
+        pages.appendChild(row);
+      });
       li.appendChild(pages);
 
       let note = "";

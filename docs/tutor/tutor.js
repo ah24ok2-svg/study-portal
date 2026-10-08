@@ -207,6 +207,7 @@
     state.planView = null;
     $("tutor-plan-root").replaceChildren();
     closeGoalForm();
+    closePlanPhoto();
     stopPolling();
     showLogin(message);
   }
@@ -738,6 +739,7 @@
       state.planView = new window.PlanView($("tutor-plan-root"), {
         editable: false,
         emptyText: "まだ目標がありません。「＋ 目標を追加」から作れます",
+        onOpenPhoto: openPlanPhoto,
         goalActions: function (goal, container) {
           const edit = document.createElement("button");
           edit.type = "button";
@@ -756,6 +758,40 @@
       });
     }
     return state.planView;
+  }
+
+  let photoViewerToken = 0;
+
+  /** 生徒が撮った見開きの写真を大きく表示する（spec §14.7） */
+  async function openPlanPhoto(photo, canEdit, context) {
+    const token = ++photoViewerToken;
+    const pages = photo.fromPage === photo.toPage ? "p." + photo.fromPage : "p." + photo.fromPage + "〜" + photo.toPage;
+    $("photo-viewer-title").textContent = context.goal.title + " " + pages;
+    const img = $("photo-viewer-img");
+    if (img.src) URL.revokeObjectURL(img.src);
+    img.removeAttribute("src");
+    img.hidden = true;
+    img.alt = context.goal.title + " " + pages + " の写真";
+    showError($("photo-viewer-status"), "読み込んでいます…");
+    $("photo-viewer").hidden = false;
+    try {
+      const data = await api("tutorGetPlanPhoto", { photoId: photo.photoId });
+      if (token !== photoViewerToken) return;
+      const bin = atob(data.dataBase64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      img.src = URL.createObjectURL(new Blob([bytes], { type: data.mimeType }));
+      img.hidden = false;
+      showError($("photo-viewer-status"), "");
+    } catch (err) {
+      if (token !== photoViewerToken || err.code === "INVALID_TOKEN") return;
+      showError($("photo-viewer-status"), err.message);
+    }
+  }
+
+  function closePlanPhoto() {
+    photoViewerToken++;
+    $("photo-viewer").hidden = true;
   }
 
   async function loadPlan() {
@@ -955,6 +991,7 @@
       b.addEventListener("click", function () { switchView(b.dataset.view); });
     });
     $("add-goal").addEventListener("click", function () { openGoalForm(null); });
+    $("photo-viewer-close").addEventListener("click", closePlanPhoto);
     $("goal-close").addEventListener("click", closeGoalForm);
     $("goal-panel").addEventListener("click", function (e) { if (e.target === $("goal-panel")) closeGoalForm(); });
     $("goal-form").addEventListener("submit", saveGoal);

@@ -121,6 +121,20 @@
     </div>
   </div>
 
+  <!-- 計画の写真（spec §14.7） -->
+  <div id="photo-viewer" class="viewer" role="dialog" aria-modal="true" aria-labelledby="photo-viewer-title" hidden>
+    <header class="viewer-head">
+      <button id="photo-viewer-close" type="button" class="icon-button" aria-label="閉じる">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <h2 id="photo-viewer-title" class="viewer-title"></h2>
+    </header>
+    <div class="viewer-body">
+      <p id="photo-viewer-status" class="viewer-status" hidden></p>
+      <div class="viewer-pages"><img id="photo-viewer-img" class="viewer-page" alt="" hidden></div>
+    </div>
+  </div>
+
   <!-- 目標の追加・編集（spec §14.6） -->
   <div id="goal-panel" class="sheet-backdrop" hidden>
     <form id="goal-form" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="goal-form-title" novalidate>

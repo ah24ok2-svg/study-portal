@@ -12,6 +12,7 @@
 docs/        生徒アプリ。GitHub Pages の配信元（素のHTML/CSS/JS、ビルドなし）
 docs/tutor/  講師アプリ（spec.md §13）
 gas/     Google Apps Script。clasp でデプロイする
+test/    GAS を Node で動かすモックとテスト（node test/run.js）
 spec.md  仕様書
 ```
 
@@ -89,6 +90,8 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 
 ## テスト
 
+- **GAS を変えたら `node test/run.js` を通してから `clasp push` する。** `test/mockgas.js` が Sheets・Drive などを偽物に差し替えて `gas/*.js` をそのまま動かす
+- 画面の確認は `SLOW_MS=300 node test/mockgas.js 8765` で http://localhost:8765/ を開く（本物の GAS と同じく302で転送し、遅さも再現する）
 - **実データで試さない。** 答案には生徒の氏名や学校名が写り込む。ダミーPDFと手書きの落書きを使う
 - カメラまわりは実機でしか確認できない。iPhone と Android の両方で確認する
 - 変更を本番に出す前に、自分のトークンで一通り通す

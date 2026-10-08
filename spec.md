@@ -823,3 +823,34 @@ Script Properties に追加する値:
 - 生徒アプリと同じカードとカレンダー（チェックは付けられない）
 - 目標の追加・編集・削除。休みの曜日は7つのボタン、休みの日付はカレンダーから追加
 - 遅れの表示: 期限超過、または前の勉強日の分が終わっていない、または今の1日の量が最初の計画より25%以上多い
+
+### 14.7 取り組んだページの写真
+生徒がやったページを撮って提出し、講師が本当にやったかを確認できるようにする。**写真は任意**（生徒によって求める度合いが違うため。必須にする設定は将来、生徒ごとに足す）。
+
+- 見開きごとに1枚。見開きは「偶数・奇数」の組（p.50–51、p.52–53）。その日の範囲の端で組が切れる場合は1ページだけの枠になる
+- 写真を撮ると、その見開きの最後のページまでチェックが付く（撮る＝やった。二度手間をなくすため）
+- 撮れるのは今日と明日以降の分だけ（§14.3 と同じ）。同じ枠で撮り直すと前の写真は Drive のゴミ箱に入る。削除もできる
+- 画像は提出と同じく長辺2000px・JPEG品質0.8に縮小してから送る
+- 保存先は生徒フォルダの中の「計画の写真」フォルダ（無ければ作る）。共有しない
+- 講師アプリでは、その日のやることの見開きごとに📷を出し、タップで写真を表示する
+
+**シート `plan_photos`**
+| 列 | 名前 | 説明 |
+|---|---|---|
+| A | photo_id | `photo_` + UUID |
+| B | goal_id | |
+| C | student_id | |
+| D | study_date | `YYYY-MM-DD`（書式なしテキスト） |
+| E | from_page | 見開きの最初のページ |
+| F | to_page | 見開きの最後のページ（from_page と同じか +1） |
+| G | file_id | Drive のファイルID |
+| H | created_at | ISO 8601 |
+
+**API**
+- `getPlan` / `tutorGetPlan` のレスポンスに `photos: [{ photoId, goalId, studyDate, fromPage, toPage }]` を追加
+- `uploadPlanPhoto` `{ token, goalId, studyDate, fromPage, toPage, dataBase64 }` → `{ photoId }`
+  - JPEG のみ（先頭バイトも確認）、10MB まで。`studyDate` と目標の条件は `setProgress` と同じ。`toPage − fromPage` は 0 か 1
+  - 同じ目標・日付・`fromPage` の写真があれば置き換える
+- `deletePlanPhoto` `{ token, photoId }` → `{}`（本人の写真で、今日以降の日付のものだけ）
+- `getPlanPhoto` `{ token, photoId }` → `{ mimeType, dataBase64 }`（本人の写真だけ）
+- `tutorGetPlanPhoto` `{ tutorToken, photoId }` → `{ mimeType, dataBase64 }`

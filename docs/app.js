@@ -307,11 +307,74 @@
           if (!message) return;
           $("plan-error").textContent = message;
           $("plan-error").hidden = false;
-        }
+        },
+        onTakePhoto: takePlanPhoto,
+        onOpenPhoto: openPlanPhoto
       });
       state.planView.render();
     }
     return state.planView;
+  }
+
+  /**
+   * 見開きの写真を撮って送る（spec §14.7）。撮る＝やった、なのでその見開きの最後のページまでチェックも付ける。
+   * カメラはタップの直後に開かないと iOS で無視されるので、await より前に input.click() する
+   */
+  function takePlanPhoto(goal, entry, spread) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.setAttribute("capture", "environment");
+    input.className = "visually-hidden";
+    document.body.appendChild(input);
+    input.addEventListener("change", async function () {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+      const view = getPlanView();
+      $("plan-error").hidden = true;
+      view.setUploading(goal.goalId, entry.date, spread.from, true);
+      const current = entry.record === null ? entry.from - 1 : entry.record;
+      if (spread.to > current) view.setProgress(goal.goalId, entry.date, spread.to);
+      try {
+        let page;
+        try {
+          page = await processImage(file);
+        } catch (_) {
+          throw new ApiError("VALIDATION_ERROR", TEXT.decodeFailed);
+        }
+        URL.revokeObjectURL(page.thumbUrl);
+        const dataBase64 = arrayBufferToBase64(await page.blob.arrayBuffer());
+        const data = await api("uploadPlanPhoto", {
+          goalId: goal.goalId, studyDate: entry.date, fromPage: spread.from, toPage: spread.to, dataBase64: dataBase64
+        });
+        view.addPhoto({ photoId: data.photoId, goalId: goal.goalId, studyDate: entry.date, fromPage: spread.from, toPage: spread.to });
+        writeCache(PLAN_CACHE_KEY, view.data);
+      } catch (err) {
+        if (err.code === "INVALID_TOKEN") return;
+        $("plan-error").textContent = "写真を送れませんでした。" + userMessage(err) + "（チェックは付いています）";
+        $("plan-error").hidden = false;
+      } finally {
+        if (state.planView === view) view.setUploading(goal.goalId, entry.date, spread.from, false);
+      }
+    });
+    input.click();
+  }
+
+  function openPlanPhoto(photo, canEdit, context) {
+    const pages = photo.fromPage === photo.toPage ? "p." + photo.fromPage : "p." + photo.fromPage + "〜" + photo.toPage;
+    showInViewer(context.goal.title + " " + pages, function () {
+      return api("getPlanPhoto", { photoId: photo.photoId });
+    }, canEdit ? {
+      retake: function () { takePlanPhoto(context.goal, context.entry, context.spread); },
+      remove: async function () {
+        if (!window.confirm(pages + " の写真を削除しますか？\nページのチェックはそのまま残ります。")) return false;
+        await api("deletePlanPhoto", { photoId: photo.photoId });
+        getPlanView().removePhoto(photo.photoId);
+        writeCache(PLAN_CACHE_KEY, getPlanView().data);
+        return true;
+      }
+    } : null);
   }
 
   async function loadPlan() {
@@ -616,18 +679,31 @@
     el.hidden = !text;
   }
 
-  async function openViewer(submission) {
+  function openViewer(submission) {
+    return showInViewer(submission.fileName, function () {
+      return api("getSubmissionFile", { submissionId: submission.id });
+    }, null);
+  }
+
+  /**
+   * ビューアにファイルを出す。提出物と計画の写真で共通。
+   * load は { fileName?, mimeType, dataBase64 } を返す。actions があれば下に「撮り直す」「削除」を出す
+   */
+  async function showInViewer(title, load, actions) {
     const token = ++viewer.token;
     viewer.file = null;
-    $("viewer-title").textContent = submission.fileName;
+    viewer.actions = actions;
+    $("viewer-title").textContent = title;
     $("viewer-pages").replaceChildren();
     $("viewer-share").disabled = true;
+    $("viewer-actions").hidden = !actions;
     setViewerStatus("読み込んでいます…");
     $("viewer").hidden = false;
     document.body.classList.add("viewer-open");
 
     try {
-      const data = await api("getSubmissionFile", { submissionId: submission.id });
+      const data = await load();
+      if (!data.fileName) data.fileName = title.replace(/[\/\\:*?"<>|]/g, "") + ".jpg";
       if (token !== viewer.token) return; // 読み込み中に閉じられた
       const bytes = base64ToBytes(data.dataBase64);
       viewer.file = new File([bytes], data.fileName, { type: data.mimeType });
@@ -691,6 +767,8 @@
   function closeViewer() {
     viewer.token++;
     viewer.file = null;
+    viewer.actions = null;
+    $("viewer-actions").hidden = true;
     $("viewer-pages").querySelectorAll("img").forEach(function (img) { URL.revokeObjectURL(img.src); });
     $("viewer-pages").replaceChildren();
     $("viewer").hidden = true;
@@ -1207,6 +1285,20 @@
     });
 
     $("viewer-close").addEventListener("click", closeViewer);
+    $("viewer-retake").addEventListener("click", function () {
+      const actions = viewer.actions;
+      closeViewer();
+      if (actions) actions.retake();
+    });
+    $("viewer-delete").addEventListener("click", async function () {
+      const actions = viewer.actions;
+      if (!actions) return;
+      try {
+        if (await actions.remove()) closeViewer();
+      } catch (err) {
+        if (err.code !== "INVALID_TOKEN") setViewerStatus(userMessage(err));
+      }
+    });
     $("viewer-share").addEventListener("click", shareViewerFile);
 
     document.addEventListener("visibilitychange", onVisibilityChange);

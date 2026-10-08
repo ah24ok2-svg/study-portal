@@ -329,6 +329,13 @@ body.viewer-open { overflow: hidden; }
 }
 .viewer-status { margin: 24px 0; text-align: center; color: #fff; font-size: 14px; }
 .viewer-pages { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.viewer-actions {
+  flex: none;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  padding: 10px 12px calc(10px + var(--safe-bottom));
+  background: var(--surface);
+}
+.viewer-delete { background: var(--danger-soft); color: var(--danger); }
 .viewer-page { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
 
 .editing-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 16px; }
@@ -511,7 +518,10 @@ body.viewer-open { overflow: hidden; }
 .todo-missed .todo-note { color: var(--danger); }
 
 /* 1ページごとのボックス。指で押しやすいよう44px四方を確保する */
-.page-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
+.page-checks { display: flex; flex-direction: column; gap: 6px; }
+/* 見開きごとに1行。2ページのボックスと、その見開きの写真ボタン（spec §14.7） */
+.spread-row { display: flex; align-items: stretch; gap: 6px; }
+.spread-row .page-check { width: 56px; flex: none; }
 .page-check {
   position: relative;
   min-height: 46px;
@@ -527,3 +537,20 @@ body.viewer-open { overflow: hidden; }
 .page-check:disabled { cursor: default; border-color: #d6cfc4; }
 .page-check.is-checked:disabled { background: #8cc79a; border-color: #8cc79a; }
 .todo-missed .page-check:not(.is-checked) { border-color: #e6b3ad; }
+
+.photo-btn {
+  margin-left: auto;
+  min-width: 76px; min-height: 46px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border: 1.5px dashed var(--primary); border-radius: 10px;
+  background: var(--surface); color: var(--primary-ink);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.photo-btn.has-photo { border-style: solid; border-color: #2f9e44; background: #e7f5ec; color: #1f6b3a; }
+.photo-btn.is-busy { border-style: solid; color: var(--ink-soft); cursor: default; }
+.mini-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--primary-soft); border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
