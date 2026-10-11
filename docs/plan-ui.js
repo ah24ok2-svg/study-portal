@@ -197,7 +197,9 @@
     }, 0);
     const allDone = entries.every(function (x) { return x.entry.status === "done"; });
     if (allDone) return { kind: "done", pages: pages, done: done };
-    if (date < this.data.today) return { kind: "missed", pages: pages, done: done };
+    if (date < this.data.today) return { kind: done > 0 ? "partial" : "missed", pages: pages, done: done };
+    // 今日は「いまやるところ」として塗り、明日以降はまだ先の予定として枠線だけにする
+    if (date > this.data.today) return { kind: "future", pages: pages, done: done };
     return { kind: "todo", pages: pages, done: done };
   };
 
@@ -236,8 +238,10 @@
       cell.setAttribute("aria-pressed", String(d === this.selected));
       const labels = {
         done: "完了 " + mark.done + "ページ",
-        missed: mark.done > 0 ? mark.done + "ページだけできた" : "できなかった",
+        partial: mark.done + "ページだけできた",
+        missed: "できなかった",
         todo: mark.pages + "ページの予定",
+        future: mark.pages + "ページの予定",
         rest: "休み",
         none: ""
       };
@@ -246,8 +250,8 @@
       const sub = el("span", "cal-sub");
       // 予定のページ数は今日以降だけ。過ぎた日と終わった日は、実際にやったページ数を出す
       if (mark.kind === "done") sub.textContent = "✓" + mark.done + "p";
-      else if (mark.kind === "missed") sub.textContent = mark.done > 0 ? mark.done + "p" : "";
-      else if (mark.kind === "todo") sub.textContent = mark.pages + "p";
+      else if (mark.kind === "partial") sub.textContent = mark.done + "p";
+      else if (mark.kind === "todo" || mark.kind === "future") sub.textContent = mark.pages + "p";
       cell.appendChild(sub);
       cell.addEventListener("click", (function (date) {
         return function () { self.select(date); };
@@ -257,7 +261,7 @@
     wrap.appendChild(grid);
 
     const legend = el("p", "cal-legend");
-    legend.innerHTML = '<span class="lg lg-todo"></span>予定 <span class="lg lg-done"></span>完了 <span class="lg lg-missed"></span>できなかった <span class="lg lg-rest"></span>休み';
+    legend.innerHTML = '<span class="lg lg-future"></span>予定 <span class="lg lg-todo"></span>今日・途中まで <span class="lg lg-done"></span>完了 <span class="lg lg-missed"></span>できなかった <span class="lg lg-rest"></span>休み';
     wrap.appendChild(legend);
     return wrap;
   };

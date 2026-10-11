@@ -488,11 +488,17 @@ body.viewer-open { overflow: hidden; }
 .cal-day.mark-missed { background: var(--danger-soft); }
 .cal-day.mark-missed .cal-sub { color: var(--danger); }
 .cal-day.mark-rest { color: #b5ada3; }
+/* 途中までできた日は今日と同じ黄色、明日以降の予定は白に黄の枠。淡い黄のままでは白の上で枠が見えないので少し濃くする */
+.cal-day.mark-partial { background: var(--primary-soft); }
+.cal-day.mark-partial .cal-sub { color: var(--primary-ink); }
+.cal-day.mark-future { background: var(--surface); box-shadow: inset 0 0 0 1.5px #ffcf8a; }
+.cal-day.mark-future .cal-sub { color: var(--primary-ink); }
 .cal-day.is-today .cal-num { color: var(--primary-ink); text-decoration: underline; text-underline-offset: 3px; }
 .cal-day.is-selected { box-shadow: inset 0 0 0 2px var(--primary); }
 .cal-legend { margin: 10px 0 0; font-size: 11px; color: var(--ink-soft); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .cal-legend .lg { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 2px; vertical-align: -1px; }
-.lg-todo { background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--primary); }
+.lg-todo { background: var(--primary-soft); }
+.lg-future { background: var(--surface); box-shadow: inset 0 0 0 1.5px #ffcf8a; }
 .lg-done { background: #e7f5ec; box-shadow: inset 0 0 0 1px #2f9e44; }
 .lg-missed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger); }
 .lg-rest { background: #f1ede6; }
