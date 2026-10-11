@@ -191,10 +191,14 @@
       return { kind: rest ? "rest" : "none", pages: 0 };
     }
     const pages = entries.reduce(function (s, x) { return s + x.entry.pages; }, 0);
+    // 実際にやったページ数。先まで進めた分も含める（予定どおりかより、何ページやったかを見たいため）
+    const done = entries.reduce(function (s, x) {
+      return s + (x.entry.record === null ? 0 : Math.max(0, x.entry.record - x.entry.from + 1));
+    }, 0);
     const allDone = entries.every(function (x) { return x.entry.status === "done"; });
-    if (allDone) return { kind: "done", pages: pages };
-    if (date < this.data.today) return { kind: "missed", pages: pages };
-    return { kind: "todo", pages: pages };
+    if (allDone) return { kind: "done", pages: pages, done: done };
+    if (date < this.data.today) return { kind: "missed", pages: pages, done: done };
+    return { kind: "todo", pages: pages, done: done };
   };
 
   PlanView.prototype.renderCalendar = function () {
@@ -230,12 +234,20 @@
       if (d === this.data.today) cell.classList.add("is-today");
       if (d === this.selected) cell.classList.add("is-selected");
       cell.setAttribute("aria-pressed", String(d === this.selected));
-      const labels = { done: "完了", missed: "できなかった", todo: mark.pages + "ページ", rest: "休み", none: "" };
+      const labels = {
+        done: "完了 " + mark.done + "ページ",
+        missed: mark.done > 0 ? mark.done + "ページだけできた" : "できなかった",
+        todo: mark.pages + "ページの予定",
+        rest: "休み",
+        none: ""
+      };
       cell.setAttribute("aria-label", fullDate(d) + (labels[mark.kind] ? " " + labels[mark.kind] : ""));
       cell.appendChild(el("span", "cal-num", String(Number(d.slice(8)))));
       const sub = el("span", "cal-sub");
-      if (mark.kind === "done") sub.textContent = "✓";
-      else if (mark.kind === "todo" || mark.kind === "missed") sub.textContent = mark.pages + "p";
+      // 予定のページ数は今日以降だけ。過ぎた日と終わった日は、実際にやったページ数を出す
+      if (mark.kind === "done") sub.textContent = "✓" + mark.done + "p";
+      else if (mark.kind === "missed") sub.textContent = mark.done > 0 ? mark.done + "p" : "";
+      else if (mark.kind === "todo") sub.textContent = mark.pages + "p";
       cell.appendChild(sub);
       cell.addEventListener("click", (function (date) {
         return function () { self.select(date); };
