@@ -85,6 +85,7 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 - GAS側は `Code.js` に全部入れず、`auth.js` / `upload.js` / `messages.js` / `tutor.js` / `push.js` / `plan.js` / `lessons.js` に分ける
 - 学習計画の日ごとの割り当ては保存しない。`docs/plan.js` が端末で計算する（spec.md §14）。生徒アプリと講師アプリで同じファイルを使い、計算を二重に書かない
 - 授業の予定も同じ。保存するのは毎週の授業と個別の変更だけで、日付の一覧は `docs/lessons.js` が展開する（spec.md §15）
+- PDF の表示は `docs/pdf-view.js` に1つだけ書き、生徒アプリの提出物ビューアと講師アプリのプレビューで共有する
 - 講師 API は `authenticateTutor(req.tutorToken)` を必ず通す。生徒の `token` では講師 API を呼べないようにする
 
 ---

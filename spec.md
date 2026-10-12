@@ -684,13 +684,14 @@ Script Properties に追加する値:
   - `messages` は直近 200 件、`submissions` は新しい順で `annotated` を含む
   - 取得時にその生徒からのメッセージを講師既読にする
 - `tutorSendMessage` `{ studentId, body }` → `{ id, createdAt }`（1000 文字以内）
+- `tutorGetSubmissionFile` `{ submissionId }` → `{ fileName, mimeType, dataBase64, updatedAt }`（§13.8）
 
 ### 13.5 講師アプリの画面
 - 配置: `docs/tutor/`（公開 URL は `/study-portal/tutor/`）。生徒アプリとは別の PWA としてホーム画面に追加する
 - 幅 768px 以上（iPad）は左に生徒一覧、右に選択中の生徒の画面を並べる。スマホは一覧 → 詳細の画面遷移
 - 生徒の画面は「やりとり」「提出物」の切り替え
   - やりとり: 生徒アプリと同じ吹き出し表示と返信欄
-  - 提出物: ファイル名・日時・コメント・「✏️ 書き込み済み」表示。ファイルは講師が PDF ビューアアプリから Drive を直接開くので、アプリ内にリンクは置かない
+  - 提出物: ファイル名・日時・コメント・「✏️ 書き込み済み」表示。タップで中身をプレビューできる（§13.8）。書き込みは講師が PDF ビューアアプリから Drive を直接開いて行うので、Drive へのリンクは置かない
 - 30 秒ごとにポーリング（非表示中は停止）
 
 ### 13.6 プッシュ通知（講師のみ）
@@ -733,6 +734,15 @@ Script Properties に追加する値:
 - 提出履歴の各行をタップで開く。pdf.js（cdnjs、3.11.174）でページを縦に並べて表示する
   - iOS のホーム画面アプリでは Blob URL の PDF を直接開けないため、アプリ内で描画する
 - 「保存・共有」ボタンで Web Share API に渡す（非対応端末はダウンロード）
+
+### 13.8 講師アプリの提出物プレビュー
+- 提出物の一覧の各行をタップで開く。表示だけで、書き込みはできない（書き込みは今までどおり PDF ビューアで Drive のファイルに行う）
+  - 「どの問題で困っているか」「書き込みが反映されたか」を、PDF ビューアを開かずにその場で確かめるため
+- Drive の最新版を表示するので、講師が書き込んで上書き保存した後は書き込み済みの状態が見える
+- 描画は生徒アプリと同じ `docs/pdf-view.js`（pdf.js でページごとの画像にする）。計画の写真（§14.7）も同じ表示画面で開く
+- Drive から削除されたものは行をボタンにせず「Driveから削除されています」と出す
+- API: `tutorGetSubmissionFile` `{ tutorToken, submissionId }` → `{ fileName, mimeType, dataBase64, updatedAt }`
+  - どの生徒の提出物でも開ける（講師のみ）。ゴミ箱にある・見つからないときは `VALIDATION_ERROR`、30MB 超は `FILE_TOO_LARGE`
 
 ---
 

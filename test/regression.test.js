@@ -35,6 +35,16 @@ module.exports = function (t) {
   t("tutor thread", r.ok && r.data.messages.length === 3 && r.data.submissions.length === 2);
   t("tutor reply", call({ action: "tutorSendMessage", tutorToken: tt, studentId: a.studentId, body: "見ました" }).ok);
   t("reply visible", call({ action: "getMessages", token: a.token }).data.messages.at(-1).body === "見ました");
+  // 講師アプリでのプレビュー（spec §13.8）
+  r = call({ action: "tutorGetSubmissionFile", tutorToken: tt, submissionId: subId });
+  t("tutor preview", r.ok && r.data.mimeType === "application/pdf" && Buffer.from(r.data.dataBase64, "base64").toString().includes("v1"), r);
+  t("tutor preview needs tutor", call({ action: "tutorGetSubmissionFile", tutorToken: a.token, submissionId: subId }).error.code === "INVALID_TOKEN");
+  t("tutor preview unknown id", call({ action: "tutorGetSubmissionFile", tutorToken: tt, submissionId: "sub_nope" }).error.code === "VALIDATION_ERROR");
+  const fileId = sheets.submissions.data.find((row) => row[0] === subId)[2];
+  m.files[fileId].f.trashed = true;
+  t("tutor preview trashed", /削除/.test(call({ action: "tutorGetSubmissionFile", tutorToken: tt, submissionId: subId }).error.message));
+  t("student view trashed", /削除/.test(call({ action: "getSubmissionFile", token: a.token, submissionId: subId }).error.message));
+  m.files[fileId].f.trashed = false;
   t("student token on tutor api", call({ action: "tutorListStudents", tutorToken: a.token }).error.code === "INVALID_TOKEN");
 
   t("register push", call({ action: "tutorRegisterPush", tutorToken: tt, fcmToken: "tok_" + "x".repeat(100) }).ok);

@@ -52,6 +52,7 @@ function doPost(e) {
       tutorListStudents: handleTutorListStudents,
       tutorGetThread: handleTutorGetThread,
       tutorSendMessage: handleTutorSendMessage,
+      tutorGetSubmissionFile: handleTutorGetSubmissionFile,
       tutorRegisterPush: handleTutorRegisterPush,
       tutorUnregisterPush: handleTutorUnregisterPush,
       tutorTestPush: handleTutorTestPush,

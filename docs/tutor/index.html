@@ -115,7 +115,7 @@
           </div>
 
           <div id="view-submissions" class="detail-view submissions-view" hidden>
-            <p class="submissions-hint">PDFビューアで Drive のファイルに書き込んで上書き保存すると、生徒のアプリにもそのまま表示されます。</p>
+            <p class="submissions-hint">タップすると中身を確認できます。PDFビューアで Drive のファイルに書き込んで上書き保存すると、生徒のアプリにもそのまま表示されます。</p>
             <ul id="submission-list" class="submission-list"></ul>
             <p id="submissions-empty" class="empty" hidden>まだ提出はありません。</p>
           </div>
@@ -143,17 +143,17 @@
     </div>
   </div>
 
-  <!-- 計画の写真（spec §14.7） -->
-  <div id="photo-viewer" class="viewer" role="dialog" aria-modal="true" aria-labelledby="photo-viewer-title" hidden>
+  <!-- 提出物のプレビュー（spec §13.8）と計画の写真（spec §14.7） -->
+  <div id="file-viewer" class="viewer" role="dialog" aria-modal="true" aria-labelledby="file-viewer-title" hidden>
     <header class="viewer-head">
-      <button id="photo-viewer-close" type="button" class="icon-button" aria-label="閉じる">
+      <button id="file-viewer-close" type="button" class="icon-button" aria-label="閉じる">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
-      <h2 id="photo-viewer-title" class="viewer-title"></h2>
+      <h2 id="file-viewer-title" class="viewer-title"></h2>
     </header>
     <div class="viewer-body">
-      <p id="photo-viewer-status" class="viewer-status" hidden></p>
-      <div class="viewer-pages"><img id="photo-viewer-img" class="viewer-page" alt="" hidden></div>
+      <p id="file-viewer-status" class="viewer-status" hidden></p>
+      <div id="file-viewer-pages" class="viewer-pages"></div>
     </div>
   </div>
 
@@ -301,6 +301,7 @@
   </div>
 
   <script src="../config.js"></script>
+  <script src="../pdf-view.js"></script>
   <script src="../lessons.js"></script>
   <script src="../plan.js"></script>
   <script src="../plan-ui.js"></script>

@@ -267,21 +267,25 @@ function handleGetSubmissionFile(req) {
     return r.values[0] === req.submissionId && r.values[1] === student.studentId;
   });
   if (!row) throw new AppError("VALIDATION_ERROR", "提出物が見つかりません");
+  return ok(submissionFilePayload(row, "この提出物は先生の側で削除されています"));
+}
 
+/** Drive 上の最新版を返す。講師が PDF ビューアで書き込んで上書きした内容もそのまま見える（spec §13.1） */
+function submissionFilePayload(row, deletedMessage) {
   let file;
   try {
     file = DriveApp.getFileById(String(row.values[2]));
   } catch (_) {
-    throw new AppError("VALIDATION_ERROR", "この提出物は先生の側で削除されています");
+    throw new AppError("VALIDATION_ERROR", deletedMessage);
   }
-  if (file.isTrashed()) throw new AppError("VALIDATION_ERROR", "この提出物は先生の側で削除されています");
+  if (file.isTrashed()) throw new AppError("VALIDATION_ERROR", deletedMessage);
   if (file.getSize() > VIEW_MAX_BYTES) throw new AppError("FILE_TOO_LARGE", "ファイルが大きすぎて表示できません");
 
   const blob = file.getBlob();
-  return ok({
+  return {
     fileName: file.getName(),
     mimeType: blob.getContentType(),
     dataBase64: Utilities.base64Encode(blob.getBytes()),
     updatedAt: file.getLastUpdated().toISOString()
-  });
+  };
 }

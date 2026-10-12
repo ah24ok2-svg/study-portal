@@ -211,3 +211,12 @@ function handleTutorSendMessage(req) {
   const saved = appendMessage(student.studentId, "tutor", body);
   return ok({ id: saved.id, createdAt: saved.createdAt });
 }
+
+/** 講師アプリでの提出物のプレビュー（spec §13.8）。書き込みは講師の PDF ビューアで行うので、ここは表示用に返すだけ */
+function handleTutorGetSubmissionFile(req) {
+  authenticateTutor(req.tutorToken);
+  if (typeof req.submissionId !== "string") throw new AppError("VALIDATION_ERROR", "提出物が見つかりません");
+  const row = readRows(SHEET.SUBMISSIONS).find(function (r) { return r.values[0] === req.submissionId; });
+  if (!row) throw new AppError("VALIDATION_ERROR", "提出物が見つかりません");
+  return ok(submissionFilePayload(row, "このファイルは Drive から削除されています"));
+}

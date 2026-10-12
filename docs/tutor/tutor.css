@@ -135,6 +135,13 @@
   background: var(--surface); border-radius: var(--radius);
   box-shadow: 0 1px 2px rgba(60, 38, 20, .05);
 }
+.submission-button {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.submission-button > div { flex: 1; min-width: 0; }
+.submission-button:active { transform: scale(.99); }
+.submission-chevron { flex: none; font-size: 24px; line-height: 1; color: var(--ink-soft); }
 .submission-name { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 .submission-meta { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
 .submission-note { margin: 6px 0 0; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }

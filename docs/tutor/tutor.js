@@ -217,7 +217,7 @@
     closeRuleForm();
     closeLessonForm();
     closeGoalForm();
-    closePlanPhoto();
+    closeFileViewer();
     stopPolling();
     showLogin(message);
   }
@@ -473,7 +473,13 @@
     $("submissions-empty").hidden = !state.thread || items.length > 0;
     items.forEach(function (s) {
       const li = document.createElement("li");
-      li.className = "submission-card";
+      // Drive から消えたものは開けないので、ボタンにしない
+      const card = document.createElement(s.available ? "button" : "div");
+      card.className = "submission-card" + (s.available ? " submission-button" : "");
+      if (s.available) {
+        card.type = "button";
+        card.addEventListener("click", function () { openSubmission(s); });
+      }
 
       const info = document.createElement("div");
       const name = document.createElement("p");
@@ -500,8 +506,23 @@
         badge.textContent = "✏️ 書き込み済み";
         info.appendChild(badge);
       }
-      li.appendChild(info);
+      card.appendChild(info);
+      if (s.available) {
+        const chevron = document.createElement("span");
+        chevron.className = "submission-chevron";
+        chevron.setAttribute("aria-hidden", "true");
+        chevron.textContent = "›";
+        card.appendChild(chevron);
+      }
+      li.appendChild(card);
       list.appendChild(li);
+    });
+  }
+
+  /** 提出物の中身をその場で確認する（spec §13.8）。書き込みは今までどおり PDF ビューアで Drive のファイルに行う */
+  function openSubmission(s) {
+    openFileViewer(s.fileName, function () {
+      return api("tutorGetSubmissionFile", { submissionId: s.id });
     });
   }
 
@@ -779,38 +800,56 @@
     return state.planView;
   }
 
-  let photoViewerToken = 0;
-
   /** 生徒が撮った見開きの写真を大きく表示する（spec §14.7） */
-  async function openPlanPhoto(photo, canEdit, context) {
-    const token = ++photoViewerToken;
+  function openPlanPhoto(photo, canEdit, context) {
     const pages = photo.fromPage === photo.toPage ? "p." + photo.fromPage : "p." + photo.fromPage + "〜" + photo.toPage;
-    $("photo-viewer-title").textContent = context.goal.title + " " + pages;
-    const img = $("photo-viewer-img");
-    if (img.src) URL.revokeObjectURL(img.src);
-    img.removeAttribute("src");
-    img.hidden = true;
-    img.alt = context.goal.title + " " + pages + " の写真";
-    showError($("photo-viewer-status"), "読み込んでいます…");
-    $("photo-viewer").hidden = false;
+    openFileViewer(context.goal.title + " " + pages, function () {
+      return api("tutorGetPlanPhoto", { photoId: photo.photoId });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // ファイルの表示（提出物のプレビューと計画の写真で共通）
+
+  let fileViewerToken = 0;
+
+  /** load は { mimeType, dataBase64 } を返す。PDF はページごとの画像にして並べる（docs/pdf-view.js） */
+  async function openFileViewer(title, load) {
+    const token = ++fileViewerToken;
+    const pages = $("file-viewer-pages");
+    const status = $("file-viewer-status");
+    const isCancelled = function () { return token !== fileViewerToken; };
+    $("file-viewer-title").textContent = title;
+    window.PdfView.clear(pages);
+    showError(status, "読み込んでいます…");
+    $("file-viewer").hidden = false;
     try {
-      const data = await api("tutorGetPlanPhoto", { photoId: photo.photoId });
-      if (token !== photoViewerToken) return;
-      const bin = atob(data.dataBase64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      img.src = URL.createObjectURL(new Blob([bytes], { type: data.mimeType }));
-      img.hidden = false;
-      showError($("photo-viewer-status"), "");
+      const data = await load();
+      if (isCancelled()) return;
+      const bytes = window.PdfView.base64ToBytes(data.dataBase64);
+      if (data.mimeType === "application/pdf") {
+        await window.PdfView.render(bytes, pages, {
+          isCancelled: isCancelled,
+          onProgress: function (i, total) { showError(status, "ページを表示しています… (" + i + "/" + total + ")"); }
+        });
+      } else {
+        const img = document.createElement("img");
+        img.className = "viewer-page";
+        img.alt = title;
+        img.src = URL.createObjectURL(new Blob([bytes], { type: data.mimeType }));
+        pages.appendChild(img);
+      }
+      if (!isCancelled()) showError(status, "");
     } catch (err) {
-      if (token !== photoViewerToken || err.code === "INVALID_TOKEN") return;
-      showError($("photo-viewer-status"), err.message);
+      if (isCancelled() || err.code === "INVALID_TOKEN") return;
+      showError(status, err instanceof ApiError ? err.message : "ファイルを表示できませんでした。電波の良い場所でもう一度お試しください");
     }
   }
 
-  function closePlanPhoto() {
-    photoViewerToken++;
-    $("photo-viewer").hidden = true;
+  function closeFileViewer() {
+    fileViewerToken++;
+    window.PdfView.clear($("file-viewer-pages"));
+    $("file-viewer").hidden = true;
   }
 
   async function loadPlan() {
@@ -1331,7 +1370,7 @@
     $("lesson-form").addEventListener("submit", saveLesson);
     $("lesson-start-time").addEventListener("focus", function () { this.dataset.prev = this.value; });
     $("lesson-start-time").addEventListener("change", onLessonStartChange);
-    $("photo-viewer-close").addEventListener("click", closePlanPhoto);
+    $("file-viewer-close").addEventListener("click", closeFileViewer);
     $("goal-close").addEventListener("click", closeGoalForm);
     $("goal-panel").addEventListener("click", function (e) { if (e.target === $("goal-panel")) closeGoalForm(); });
     $("goal-form").addEventListener("submit", saveGoal);

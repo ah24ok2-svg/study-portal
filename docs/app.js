@@ -744,36 +744,7 @@
   // ---------------------------------------------------------------------------
   // 提出物ビューア（spec §13.7）
 
-  const PDFJS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
-  let pdfjsPromise = null;
   const viewer = { token: 0, file: null };
-
-  /** 提出するだけの生徒には不要なので、初めて開くときにだけ読み込む */
-  function loadPdfJs() {
-    if (!pdfjsPromise) {
-      pdfjsPromise = new Promise(function (resolve, reject) {
-        const script = document.createElement("script");
-        script.src = PDFJS_BASE + "pdf.min.js";
-        script.onload = function () {
-          window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js";
-          resolve(window.pdfjsLib);
-        };
-        script.onerror = function () {
-          pdfjsPromise = null;
-          reject(new ApiError("NETWORK", TEXT.network));
-        };
-        document.head.appendChild(script);
-      });
-    }
-    return pdfjsPromise;
-  }
-
-  function base64ToBytes(b64) {
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
-  }
 
   function setViewerStatus(text) {
     const el = $("viewer-status");
@@ -807,12 +778,16 @@
       const data = await load();
       if (!data.fileName) data.fileName = title.replace(/[\/\\:*?"<>|]/g, "") + ".jpg";
       if (token !== viewer.token) return; // 読み込み中に閉じられた
-      const bytes = base64ToBytes(data.dataBase64);
+      const bytes = window.PdfView.base64ToBytes(data.dataBase64);
       viewer.file = new File([bytes], data.fileName, { type: data.mimeType });
       $("viewer-share").disabled = false;
 
       if (data.mimeType === "application/pdf") {
-        await renderPdf(bytes, token);
+        await window.PdfView.render(bytes, $("viewer-pages"), {
+          isCancelled: function () { return token !== viewer.token; },
+          onProgress: function (i, total) { setViewerStatus("ページを表示しています… (" + i + "/" + total + ")"); }
+        });
+        if (token === viewer.token) setViewerStatus("");
       } else {
         const img = document.createElement("img");
         img.className = "viewer-page";
@@ -828,51 +803,12 @@
     }
   }
 
-  /**
-   * ページを画像にして縦に並べる。iOS のホーム画面アプリでは PDF の Blob URL を開けないため、
-   * ブラウザの PDF 表示に頼らずアプリ内で描画する
-   */
-  async function renderPdf(bytes, token) {
-    const pdfjsLib = await loadPdfJs();
-    // pdf.js は渡した配列を worker に移して空にするので、共有用 File とは別のコピーを渡す
-    const doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
-    const container = $("viewer-pages");
-    const cssWidth = Math.min(container.clientWidth || window.innerWidth, 900);
-    // iOS は canvas の面積に上限があるので、高精細ディスプレイでも2倍までに抑える
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-    for (let i = 1; i <= doc.numPages; i++) {
-      if (token !== viewer.token) return;
-      setViewerStatus("ページを表示しています… (" + i + "/" + doc.numPages + ")");
-      const page = await doc.getPage(i);
-      const base = page.getViewport({ scale: 1 });
-      const viewport = page.getViewport({ scale: (cssWidth * dpr) / base.width });
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      await page.render({ canvasContext: canvas.getContext("2d"), viewport: viewport }).promise;
-      const blob = await canvasToBlob(canvas, "image/jpeg", 0.9);
-      canvas.width = canvas.height = 0;
-      if (token !== viewer.token) return;
-
-      const img = document.createElement("img");
-      img.className = "viewer-page";
-      img.alt = i + "ページ目";
-      img.src = URL.createObjectURL(blob);
-      container.appendChild(img);
-      await nextTick();
-    }
-    setViewerStatus("");
-    doc.destroy();
-  }
-
   function closeViewer() {
     viewer.token++;
     viewer.file = null;
     viewer.actions = null;
     $("viewer-actions").hidden = true;
-    $("viewer-pages").querySelectorAll("img").forEach(function (img) { URL.revokeObjectURL(img.src); });
-    $("viewer-pages").replaceChildren();
+    window.PdfView.clear($("viewer-pages"));
     $("viewer").hidden = true;
     document.body.classList.remove("viewer-open");
   }
