@@ -1,6 +1,6 @@
 /**
  * エントリポイントと共通ユーティリティ。
- * 各 action の処理は auth.js / messages.js / upload.js にある。
+ * 各 action の処理は auth.js / messages.js / upload.js / tutor.js / push.js / plan.js / lessons.js にある。
  */
 
 const SHEET = {
@@ -9,7 +9,9 @@ const SHEET = {
   SUBMISSIONS: "submissions",
   GOALS: "goals",
   GOAL_PROGRESS: "goal_progress",
-  PLAN_PHOTOS: "plan_photos"
+  PLAN_PHOTOS: "plan_photos",
+  LESSON_RULES: "lesson_rules",
+  LESSON_CHANGES: "lesson_changes"
 };
 
 const HEADERS = {
@@ -18,14 +20,19 @@ const HEADERS = {
   submissions: ["submission_id", "student_id", "file_id", "file_name", "mime_type", "size_bytes", "note", "created_at"],
   goals: ["goal_id", "student_id", "title", "start_page", "end_page", "start_date", "due_date", "rest_weekdays", "rest_dates", "active", "created_at", "updated_at", "spread_start"],
   goal_progress: ["progress_id", "goal_id", "student_id", "study_date", "through_page", "updated_at"],
-  plan_photos: ["photo_id", "goal_id", "student_id", "study_date", "from_page", "to_page", "file_id", "created_at"]
+  plan_photos: ["photo_id", "goal_id", "student_id", "study_date", "from_page", "to_page", "file_id", "created_at"],
+  lesson_rules: ["rule_id", "student_id", "weekday", "start_time", "end_time", "start_date", "end_date", "created_at", "updated_at"],
+  lesson_changes: ["change_id", "student_id", "kind", "date", "start_time", "end_time", "rule_id", "note", "created_at", "updated_at"]
 };
 
 // Sheets が "2026-10-01" を日付型に、"[0,6]" 以外の値を数値に変えないよう、書式なしテキストにする列（spec §14.4）
 const TEXT_COLUMNS = {
   goals: ["F:F", "G:G", "H:H", "I:I"],
   goal_progress: ["D:D"],
-  plan_photos: ["D:D"]
+  plan_photos: ["D:D"],
+  // "19:00" も時刻型に変えられてしまう
+  lesson_rules: ["D:D", "E:E", "F:F", "G:G"],
+  lesson_changes: ["D:D", "E:E", "F:F"]
 };
 
 const LOCK_TIMEOUT_MS = 10 * 1000;
@@ -56,7 +63,14 @@ function doPost(e) {
       uploadPlanPhoto: handleUploadPlanPhoto,
       deletePlanPhoto: handleDeletePlanPhoto,
       getPlanPhoto: handleGetPlanPhoto,
-      tutorGetPlanPhoto: handleTutorGetPlanPhoto
+      tutorGetPlanPhoto: handleTutorGetPlanPhoto,
+      getLessons: handleGetLessons,
+      tutorGetLessons: handleTutorGetLessons,
+      tutorSaveLessonRule: handleTutorSaveLessonRule,
+      tutorDeleteLessonRule: handleTutorDeleteLessonRule,
+      tutorSaveLesson: handleTutorSaveLesson,
+      tutorDeleteLesson: handleTutorDeleteLesson,
+      tutorSetLessonCancelled: handleTutorSetLessonCancelled
     };
     const handler = Object.prototype.hasOwnProperty.call(handlers, req.action) ? handlers[req.action] : null;
     if (!handler) return json(fail("VALIDATION_ERROR", "不正なリクエストです"));
@@ -123,6 +137,24 @@ function getSheet(name) {
   const sheet = SpreadsheetApp.openById(getProp("SPREADSHEET_ID")).getSheetByName(name);
   if (!sheet) throw new Error("シート " + name + " がありません");
   return sheet;
+}
+
+/**
+ * 後から足したシートが無ければ作る。追加したときに setup を実行し忘れても、
+ * 生徒や講師の画面がエラーにならないようにするため
+ */
+function ensureSheets(names) {
+  const ss = SpreadsheetApp.openById(getProp("SPREADSHEET_ID"));
+  if (names.every(function (n) { return ss.getSheetByName(n); })) return;
+  withLock(function () {
+    names.forEach(function (name) {
+      if (ss.getSheetByName(name)) return;
+      const sheet = ss.insertSheet(name);
+      sheet.setFrozenRows(1);
+      (TEXT_COLUMNS[name] || []).forEach(function (a1) { sheet.getRange(a1).setNumberFormat("@"); });
+      sheet.getRange(1, 1, 1, HEADERS[name].length).setValues([HEADERS[name]]).setFontWeight("bold");
+    });
+  });
 }
 
 /** ヘッダー行を除いた全行。行番号(1始まり)も併せて返す */

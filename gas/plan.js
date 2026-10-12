@@ -71,23 +71,8 @@ function publicGoal(g) {
   };
 }
 
-/**
- * 計画用のシートが無ければ作る。追加したときに setup を実行し忘れても、
- * 生徒や講師の画面がエラーにならないようにするため
- */
 function ensurePlanSheets() {
-  const ss = SpreadsheetApp.openById(getProp("SPREADSHEET_ID"));
-  const names = [SHEET.GOALS, SHEET.GOAL_PROGRESS, SHEET.PLAN_PHOTOS];
-  if (names.every(function (n) { return ss.getSheetByName(n); })) return;
-  withLock(function () {
-    names.forEach(function (name) {
-      if (ss.getSheetByName(name)) return;
-      const sheet = ss.insertSheet(name);
-      sheet.setFrozenRows(1);
-      (TEXT_COLUMNS[name] || []).forEach(function (a1) { sheet.getRange(a1).setNumberFormat("@"); });
-      sheet.getRange(1, 1, 1, HEADERS[name].length).setValues([HEADERS[name]]).setFontWeight("bold");
-    });
-  });
+  ensureSheets([SHEET.GOALS, SHEET.GOAL_PROGRESS, SHEET.PLAN_PHOTOS]);
 }
 
 function readGoals(studentId) {

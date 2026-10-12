@@ -8,6 +8,7 @@
   const MESSAGES_CACHE_KEY = "tutorapp.cache.messages";
   const HISTORY_CACHE_KEY = "tutorapp.cache.history";
   const PLAN_CACHE_KEY = "tutorapp.cache.plan";
+  const LESSONS_CACHE_KEY = "tutorapp.cache.lessons";
   const MESSAGES_CACHE_LIMIT = 100;
   const POLL_INTERVAL_MS = 30 * 1000;
   const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -44,6 +45,9 @@
     loadingMessages: false,
     planView: null,
     loadingPlan: false,
+    // 授業の予定（spec §15）。サーバーの { rules, changes } をそのまま持ち、表示のたびに展開する
+    lessons: null,
+    loadingLessons: false,
     // 朝6時をまたいだら計画を取り直すため、最後に見た「勉強の日付」を覚えておく
     lastStudyDate: null,
     submit: {
@@ -86,6 +90,7 @@
     storageRemove(MESSAGES_CACHE_KEY);
     storageRemove(HISTORY_CACHE_KEY);
     storageRemove(PLAN_CACHE_KEY);
+    storageRemove(LESSONS_CACHE_KEY);
   }
 
   // ---------------------------------------------------------------------------
@@ -199,6 +204,8 @@
     state.pending = [];
     state.planView = null;
     $("plan-root").replaceChildren();
+    state.lessons = null;
+    renderLessons();
     renderMessages();
     resetSubmit();
     closeViewer();
@@ -216,6 +223,7 @@
     restoreCaches();
     loadMessages({ scrollToBottom: true });
     loadHistory();
+    loadLessons();
     startPolling();
   }
 
@@ -246,9 +254,11 @@
       btn.setAttribute("aria-selected", String(btn.dataset.tab === tab));
     });
     $("tab-messages").hidden = tab !== "messages";
+    $("tab-lessons").hidden = tab !== "lessons";
     $("tab-plan").hidden = tab !== "plan";
     $("tab-submit").hidden = tab !== "submit";
     if (tab === "plan") loadPlan();
+    if (tab === "lessons") loadLessons();
     if (tab === "messages") scrollMessagesToBottom();
     // 先生が Drive で書き込んだかどうかは生徒側では気づけないので、開くたびに取り直す
     if (tab === "submit" && state.submit.status === "idle") loadHistory();
@@ -282,6 +292,8 @@
     if (history) renderHistory(history);
     const plan = readCache(PLAN_CACHE_KEY);
     if (plan) getPlanView().setData(plan);
+    state.lessons = readCache(LESSONS_CACHE_KEY);
+    renderLessons();
   }
 
   // ---------------------------------------------------------------------------
@@ -403,6 +415,93 @@
       state.lastStudyDate = now;
       loadPlan();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 授業の予定（spec §15）
+
+  async function loadLessons() {
+    if (state.loadingLessons || !state.token) return;
+    state.loadingLessons = true;
+    try {
+      const data = await api("getLessons");
+      state.lessons = data;
+      writeCache(LESSONS_CACHE_KEY, data);
+      $("lessons-error").hidden = true;
+      renderLessons();
+    } catch (err) {
+      if (err.code === "INVALID_TOKEN") return;
+      // やりとりの上の「次の授業」は前回の表示のまま。エラーは授業タブにだけ出す
+      $("lessons-error").textContent = userMessage(err);
+      $("lessons-error").hidden = false;
+    } finally {
+      state.loadingLessons = false;
+    }
+  }
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function lessonWhen(item) {
+    return item.ongoing ? "授業中" : window.Lessons.relativeDay(item.date);
+  }
+
+  function renderLessons() {
+    const L = window.Lessons;
+    const root = $("lessons-root");
+    const bar = $("next-lesson-bar");
+    root.replaceChildren();
+    if (!state.lessons) {
+      bar.hidden = true;
+      if (state.token) root.appendChild(el("p", "empty", "読み込んでいます…"));
+      return;
+    }
+    const items = L.upcoming(state.lessons);
+    const next = L.nextLesson(items);
+
+    bar.hidden = !next;
+    if (next) {
+      bar.replaceChildren(
+        el("span", "next-lesson-bar-label", "次の授業"),
+        el("span", "next-lesson-bar-when", L.shortDate(next.date) + " " + L.timeRange(next)),
+        el("span", "lesson-rel" + (next.ongoing ? " is-now" : ""), lessonWhen(next))
+      );
+      bar.setAttribute("aria-label", "次の授業 " + L.longDate(next.date) + " " + L.timeRange(next) + "。授業の予定を開く");
+    }
+
+    const card = el("section", "next-lesson-card");
+    card.appendChild(el("h2", "next-lesson-title", "次の授業"));
+    if (next) {
+      const head = el("div", "next-lesson-head");
+      head.append(el("p", "next-lesson-date", L.longDate(next.date)), el("span", "lesson-rel" + (next.ongoing ? " is-now" : ""), lessonWhen(next)));
+      card.append(head, el("p", "next-lesson-time", L.timeRange(next)));
+      if (next.note) card.appendChild(el("p", "lesson-note", next.note));
+    } else {
+      card.appendChild(el("p", "next-lesson-none", "次の授業はまだ決まっていません"));
+    }
+    root.appendChild(card);
+
+    const rest = items.filter(function (x) { return x !== next; });
+    if (rest.length) {
+      root.appendChild(el("h2", "section-title lessons-section-title", "これからの予定"));
+      const list = el("ul", "lesson-list");
+      rest.forEach(function (x) {
+        const li = el("li", "lesson-row" + (x.cancelled ? " is-cancelled" : ""));
+        const main = el("div", "lesson-row-main");
+        main.append(el("span", "lesson-row-date", L.shortDate(x.date)), el("span", "lesson-row-time", L.timeRange(x)));
+        li.appendChild(main);
+        if (x.kind === "extra") li.appendChild(el("span", "lesson-tag tag-extra", "追加"));
+        if (x.cancelled) li.appendChild(el("span", "lesson-tag tag-off", "休み"));
+        if (x.note) li.appendChild(el("p", "lesson-note", x.note));
+        list.appendChild(li);
+      });
+      root.appendChild(list);
+    }
+    root.appendChild(el("p", "hint lessons-hint", "予定は先生が設定します。都合が悪いときは「やりとり」で先生に連絡してください。"));
   }
 
   function addMessages(incoming) {
@@ -545,6 +644,8 @@
     state.pollTimer = setInterval(function () {
       loadMessages();
       checkStudyDateRollover();
+      // 授業が終わったら一覧から外す。予定そのものは変わっていないので取り直さない
+      renderLessons();
     }, POLL_INTERVAL_MS);
   }
 
@@ -561,6 +662,7 @@
       loadMessages();
       if (state.tab === "submit" && state.submit.status === "idle") loadHistory();
       if (state.tab === "plan") loadPlan();
+      loadLessons();
       checkStudyDateRollover();
       startPolling();
     }
@@ -1264,6 +1366,7 @@
       btn.addEventListener("click", function () { switchTab(btn.dataset.tab); });
     });
 
+    $("next-lesson-bar").addEventListener("click", function () { switchTab("lessons"); });
     $("composer").addEventListener("submit", onSendMessage);
     $("composer-input").addEventListener("input", autoGrowComposer);
 

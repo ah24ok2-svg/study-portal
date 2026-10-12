@@ -68,6 +68,7 @@
             <h2 id="detail-name" class="detail-name"></h2>
             <div class="segmented" role="tablist">
               <button id="seg-messages" type="button" role="tab" aria-selected="true" data-view="messages">やりとり</button>
+              <button id="seg-lessons" type="button" role="tab" aria-selected="false" data-view="lessons">授業</button>
               <button id="seg-plan" type="button" role="tab" aria-selected="false" data-view="plan">計画</button>
               <button id="seg-submissions" type="button" role="tab" aria-selected="false" data-view="submissions">提出物 <span id="submission-count" class="count"></span></button>
             </div>
@@ -82,6 +83,27 @@
               <textarea id="composer-input" class="input composer-input" rows="1" maxlength="1000" placeholder="返信を入力" aria-label="返信"></textarea>
               <button id="composer-send" type="submit" class="btn btn-primary composer-send" disabled>送信</button>
             </form>
+          </div>
+
+          <!-- 授業の予定（spec §15） -->
+          <div id="view-lessons" class="detail-view lessons-view" hidden>
+            <div class="lessons-inner">
+              <p id="tutor-lessons-error" class="inline-error" role="alert" hidden></p>
+
+              <div class="lessons-section-head">
+                <h3 class="section-title">毎週の授業</h3>
+                <button id="add-rule" type="button" class="link-button">＋ 追加</button>
+              </div>
+              <ul id="rule-list" class="rule-list"></ul>
+              <p id="rules-empty" class="muted rules-empty" hidden>まだありません。「＋ 追加」から曜日と時間を設定すると、これからの予定が自動で並びます</p>
+
+              <div class="lessons-section-head">
+                <h3 class="section-title">これからの予定</h3>
+                <button id="add-lesson" type="button" class="btn btn-primary add-lesson">＋ 授業を追加</button>
+              </div>
+              <ul id="tutor-lesson-list" class="lesson-list"></ul>
+              <p id="tutor-lessons-empty" class="empty" hidden>予定はまだありません</p>
+            </div>
           </div>
 
           <div id="view-plan" class="detail-view plan-panel" hidden>
@@ -197,7 +219,89 @@
     </form>
   </div>
 
+  <!-- 毎週の授業の追加・編集（spec §15） -->
+  <div id="rule-panel" class="sheet-backdrop" hidden>
+    <form id="rule-form" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="rule-form-title" novalidate>
+      <div class="sheet-head">
+        <h2 id="rule-form-title">毎週の授業を追加</h2>
+        <button id="rule-close" type="button" class="icon-button" aria-label="閉じる">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <p class="field-label" id="rule-weekday-label">曜日</p>
+      <div id="rule-weekdays" class="weekday-toggles weekday-pick" role="radiogroup" aria-labelledby="rule-weekday-label"></div>
+
+      <div class="goal-row">
+        <div>
+          <label class="field-label" for="rule-start-time">開始</label>
+          <input id="rule-start-time" class="input" type="time" step="300" required>
+        </div>
+        <span class="goal-row-sep">〜</span>
+        <div>
+          <label class="field-label" for="rule-end-time">終了</label>
+          <input id="rule-end-time" class="input" type="time" step="300" required>
+        </div>
+      </div>
+
+      <div class="goal-row">
+        <div>
+          <label class="field-label" for="rule-start-date">いつから</label>
+          <input id="rule-start-date" class="input" type="date" required>
+        </div>
+        <span class="goal-row-sep">〜</span>
+        <div>
+          <label class="field-label" for="rule-end-date">いつまで <span class="optional">任意</span></label>
+          <input id="rule-end-date" class="input" type="date">
+        </div>
+      </div>
+      <p class="hint">「いつまで」が空欄なら、ずっと毎週続きます</p>
+
+      <p id="rule-error" class="inline-error" role="alert" hidden></p>
+      <div class="sheet-actions">
+        <button id="rule-save" type="submit" class="btn btn-primary btn-block">保存</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- イレギュラーの授業の追加・日時の変更（spec §15） -->
+  <div id="lesson-panel" class="sheet-backdrop" hidden>
+    <form id="lesson-form" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="lesson-form-title" novalidate>
+      <div class="sheet-head">
+        <h2 id="lesson-form-title">授業を追加</h2>
+        <button id="lesson-close" type="button" class="icon-button" aria-label="閉じる">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p id="lesson-form-lead" class="lesson-form-lead" hidden></p>
+
+      <label class="field-label" for="lesson-date">日付</label>
+      <input id="lesson-date" class="input" type="date" required>
+
+      <div class="goal-row">
+        <div>
+          <label class="field-label" for="lesson-start-time">開始</label>
+          <input id="lesson-start-time" class="input" type="time" step="300" required>
+        </div>
+        <span class="goal-row-sep">〜</span>
+        <div>
+          <label class="field-label" for="lesson-end-time">終了</label>
+          <input id="lesson-end-time" class="input" type="time" step="300" required>
+        </div>
+      </div>
+
+      <label class="field-label" for="lesson-note">メモ <span class="optional">任意・生徒にも見えます</span></label>
+      <input id="lesson-note" class="input" type="text" maxlength="40" placeholder="例: 振替、テスト前の補講">
+
+      <p id="lesson-error" class="inline-error" role="alert" hidden></p>
+      <div class="sheet-actions">
+        <button id="lesson-save" type="submit" class="btn btn-primary btn-block">保存</button>
+      </div>
+    </form>
+  </div>
+
   <script src="../config.js"></script>
+  <script src="../lessons.js"></script>
   <script src="../plan.js"></script>
   <script src="../plan-ui.js"></script>
   <script src="../decor.js" defer></script>

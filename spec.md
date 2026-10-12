@@ -859,3 +859,86 @@ Script Properties に追加する値:
 - `deletePlanPhoto` `{ token, photoId }` → `{}`（本人の写真で、今日以降の日付のものだけ）
 - `getPlanPhoto` `{ token, photoId }` → `{ mimeType, dataBase64 }`（本人の写真だけ）
 - `tutorGetPlanPhoto` `{ tutorToken, photoId }` → `{ mimeType, dataBase64 }`
+
+---
+
+## 15. 授業の予定
+
+生徒が「次の授業はいつか」をアプリで確かめられるようにする。予定を決めるのは講師で、授業の最後に生徒と確認しながら講師アプリで設定する。
+
+### 15.1 基本の考え方
+
+- 授業は基本的に毎週決まった曜日・時間に行う。これを「毎週の授業」として登録すると、これからの日付と時間の一覧が自動で並ぶ
+- その上に、個別の変更を重ねる
+  - **追加**: イレギュラーの授業（補講・振替先など）
+  - **休み**: 毎週の授業のうち、その日だけ行わない
+  - **日時を変更**（振替）: 毎週の授業をその日だけ休みにし、別の日時に追加する。1回の操作で両方行う
+- 日付ごとの一覧は保存しない。`docs/lessons.js` が端末で展開する（§14 の計画と同じ考え方。毎週の時間を変えたときに、作っておいた一覧を直して回らなくて済む）
+- 日付は暦どおり（計画のような朝6時の切り替えはしない）。時刻はすべて日本時間
+- 終わった授業は一覧から消える。授業中のものは「授業中」として残る
+- 毎週の授業は今日から8週間分を並べる。追加した授業はそれより先でも出す
+- 生徒が予定を変えることはできない。都合が悪いときは「やりとり」で連絡する
+
+### 15.2 データ
+
+**シート `lesson_rules`**（毎週の授業）
+| 列 | 名前 | 説明 |
+|---|---|---|
+| A | rule_id | `rule_` + UUID |
+| B | student_id | |
+| C | weekday | 0（日）〜6（土） |
+| D | start_time | `HH:MM`（書式なしテキスト） |
+| E | end_time | `HH:MM`（書式なしテキスト）。開始より後 |
+| F | start_date | `YYYY-MM-DD`。この日から（書式なしテキスト） |
+| G | end_date | `YYYY-MM-DD` または空欄（ずっと続く） |
+| H | created_at | ISO 8601 |
+| I | updated_at | ISO 8601 |
+
+- 1人7件まで。削除は行ごと消し、その枠の「休み」も一緒に消す（振替で追加した授業は残す）
+
+**シート `lesson_changes`**（個別の変更）
+| 列 | 名前 | 説明 |
+|---|---|---|
+| A | change_id | 追加は `lesson_` + UUID、休みは `cancel_` + UUID |
+| B | student_id | |
+| C | kind | `extra`（追加）／ `cancel`（休み） |
+| D | date | `YYYY-MM-DD`（書式なしテキスト） |
+| E | start_time | `extra` のみ。`HH:MM` |
+| F | end_time | `extra` のみ。`HH:MM` |
+| G | rule_id | `cancel` のみ。休みにした毎週の授業 |
+| H | note | `extra` のみ。40文字まで。生徒にも見える（例: 振替） |
+| I | created_at | ISO 8601 |
+| J | updated_at | ISO 8601 |
+
+- どちらのシートも、無ければ最初の利用時に作る（`ensureSheets`）
+
+### 15.3 API
+
+- `getLessons` `{ token }` → `{ rules, changes, today }`
+  - `rules: [{ ruleId, weekday, startTime, endTime, startDate, endDate }]`
+  - `changes`: 今日以降のものだけ。`{ kind: "extra", lessonId, date, startTime, endTime, note }` または `{ kind: "cancel", ruleId, date }`
+- `tutorGetLessons` `{ tutorToken, studentId }` → 同上
+- `tutorSaveLessonRule` `{ tutorToken, studentId, rule: { ruleId?, weekday, startTime, endTime, startDate, endDate } }` → `{ ruleId }`
+  - `ruleId` があれば更新。時刻は `HH:MM`（0埋め）で終了 > 開始。`endDate` は空か `startDate` 以降
+- `tutorDeleteLessonRule` `{ tutorToken, studentId, ruleId }` → `{}`
+- `tutorSaveLesson` `{ tutorToken, studentId, lesson: { lessonId?, date, startTime, endTime, note }, replaces?: { ruleId, date } }` → `{ lessonId }`
+  - `date` は今日〜1年先。`lessonId` があれば追加した授業を更新
+  - `replaces` があれば、その毎週の授業の日を同時に休みにする（振替）
+- `tutorDeleteLesson` `{ tutorToken, studentId, lessonId }` → `{}`
+- `tutorSetLessonCancelled` `{ tutorToken, studentId, ruleId, date, cancelled }` → `{}`
+  - `date` がその毎週の授業の曜日・期間に入っていて、今日以降であること。同じ日を二度休みにしても1件のまま
+
+### 15.4 画面
+
+**生徒アプリ**
+- タブを「やりとり／授業／計画／提出」の4つにする
+- 「やりとり」の上部に「次の授業 10/16(金) 18:00〜19:30 ［4日後］」のバーを出す。押すと「授業」タブへ
+- 「授業」タブ: 次の授業を大きく（日付・時間・今日／明日／N日後・メモ）、その下に「これからの予定」。休みの日は取り消し線と「休み」、追加した授業は「追加」の印
+
+**講師アプリ**
+- 生徒の画面の切り替えを「やりとり／授業／計画／提出物」の4つにする
+- 「毎週の授業」: 一覧（編集・削除）と「＋ 追加」（曜日・開始〜終了・いつから〜いつまで）
+- 「これからの予定」: 「＋ 授業を追加」と一覧。次の授業に「次回」の印
+  - 毎週の授業: 「日時を変更」「休みにする」（休みの日は「休みを取り消す」）
+  - 追加した授業: 「変更」「削除」
+- 授業を追加するときは、毎週の授業と同じ時間を最初から入れておく。開始時刻を変えると、長さを保ったまま終了時刻もずれる

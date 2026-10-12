@@ -44,6 +44,8 @@
 
     <!-- やりとり -->
     <main id="tab-messages" class="tab-panel messages-panel" role="tabpanel" aria-labelledby="tabbtn-messages">
+      <!-- 次の授業（spec §15）。押すと「授業」タブへ -->
+      <button id="next-lesson-bar" type="button" class="next-lesson-bar" hidden></button>
       <div id="message-list" class="message-list" aria-live="polite">
         <p id="messages-empty" class="empty" hidden>まだメッセージはありません。<br>質問や連絡があれば送ってください。</p>
       </div>
@@ -52,6 +54,12 @@
         <textarea id="composer-input" class="input composer-input" rows="1" maxlength="1000" placeholder="メッセージを入力" aria-label="メッセージ"></textarea>
         <button id="composer-send" type="submit" class="btn btn-primary composer-send" disabled>送信</button>
       </form>
+    </main>
+
+    <!-- 授業の予定（spec §15） -->
+    <main id="tab-lessons" class="tab-panel lessons-panel" role="tabpanel" aria-labelledby="tabbtn-lessons" hidden>
+      <p id="lessons-error" class="inline-error lessons-error" role="alert" hidden></p>
+      <div id="lessons-root" class="lessons-root"></div>
     </main>
 
     <!-- 計画（spec §14） -->
@@ -156,6 +164,10 @@
         <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><path d="M5 5h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-8l-5 4v-4H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
         <span>やりとり</span>
       </button>
+      <button id="tabbtn-lessons" type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-lessons" data-tab="lessons">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>授業</span>
+      </button>
       <button id="tabbtn-plan" type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-plan" data-tab="plan">
         <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 9.5h16M8.5 3v4M15.5 3v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8.5 14.5l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>計画</span>
@@ -199,6 +211,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
   <script src="config.js"></script>
   <script src="decor.js" defer></script>
+  <script src="lessons.js" defer></script>
   <script src="plan.js" defer></script>
   <script src="plan-ui.js" defer></script>
   <script src="app.js" defer></script>

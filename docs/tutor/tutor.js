@@ -39,6 +39,13 @@
     editingGoal: null,
     formRestWeekdays: [],
     formRestDates: [],
+    // 授業の予定（spec §15）。選んでいる生徒の { rules, changes }
+    lessons: null,
+    loadingLessons: null,
+    editingRule: null,
+    formRuleWeekday: null,
+    // 授業フォームの用途: 追加（item なし）／毎週の授業の日時を変える（move）／追加した授業を直す（edit）
+    lessonForm: null,
     // 通知から開いたときに、一覧の読み込み後に選ぶ生徒
     pendingStudentId: new URLSearchParams(location.search).get("student")
   };
@@ -206,6 +213,9 @@
     state.thread = null;
     state.planView = null;
     $("tutor-plan-root").replaceChildren();
+    state.lessons = null;
+    closeRuleForm();
+    closeLessonForm();
     closeGoalForm();
     closePlanPhoto();
     stopPolling();
@@ -337,6 +347,11 @@
     scrollToBottom();
     loadThread({ scrollToBottom: true });
     if (changed) {
+      state.lessons = readCache("lessons." + studentId);
+      renderLessons();
+    }
+    if (state.view === "lessons") loadLessons();
+    if (changed) {
       // 前の生徒の計画が一瞬でも見えないよう、作り直す
       state.planView = null;
       const cached = readCache("plan." + studentId);
@@ -361,9 +376,11 @@
       b.setAttribute("aria-selected", String(b.dataset.view === view));
     });
     $("view-messages").hidden = view !== "messages";
+    $("view-lessons").hidden = view !== "lessons";
     $("view-plan").hidden = view !== "plan";
     $("view-submissions").hidden = view !== "submissions";
     if (view === "messages") scrollToBottom();
+    if (view === "lessons") loadLessons();
     if (view === "plan") loadPlan();
   }
 
@@ -727,6 +744,8 @@
     loadStudents();
     if (state.selectedId) loadThread();
     if (state.selectedId && state.view === "plan") loadPlan();
+    // 終わった授業を一覧から外す。予定は講師しか変えないので取り直さない
+    if (state.selectedId && state.view === "lessons") renderLessons();
   }
 
   // ---------------------------------------------------------------------------
@@ -967,6 +986,300 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 授業の予定（spec §15）
+
+  async function loadLessons() {
+    const studentId = state.selectedId;
+    if (!studentId || state.loadingLessons === studentId) return;
+    state.loadingLessons = studentId;
+    try {
+      const data = await api("tutorGetLessons", { studentId: studentId });
+      if (state.selectedId !== studentId) return;
+      state.lessons = data;
+      writeCache("lessons." + studentId, data);
+      showError($("tutor-lessons-error"), "");
+      renderLessons();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("tutor-lessons-error"), err.message);
+    } finally {
+      if (state.loadingLessons === studentId) state.loadingLessons = null;
+    }
+  }
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function miniButton(label, onClick, danger) {
+    const b = el("button", "mini-btn" + (danger ? " danger" : ""), label);
+    b.type = "button";
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function iconButton(label, svgPath, onClick, danger) {
+    const b = el("button", "icon-button" + (danger ? " danger" : ""));
+    b.type = "button";
+    b.setAttribute("aria-label", label);
+    b.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="' + svgPath + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function ruleRangeText(rule) {
+    const L = window.Lessons;
+    const today = L.nowInTokyo().date;
+    if (rule.startDate > today && rule.endDate) return L.shortDate(rule.startDate) + "〜" + L.shortDate(rule.endDate);
+    if (rule.startDate > today) return L.shortDate(rule.startDate) + "から";
+    if (rule.endDate) return L.shortDate(rule.endDate) + "まで";
+    return "";
+  }
+
+  function renderLessons() {
+    const L = window.Lessons;
+    const data = state.lessons;
+    const ruleList = $("rule-list");
+    const list = $("tutor-lesson-list");
+    ruleList.replaceChildren();
+    list.replaceChildren();
+    $("rules-empty").hidden = !data || data.rules.length > 0;
+    if (!data) {
+      $("tutor-lessons-empty").textContent = "読み込んでいます…";
+      $("tutor-lessons-empty").hidden = false;
+      return;
+    }
+
+    data.rules.slice().sort(function (a, b) {
+      return a.weekday !== b.weekday ? a.weekday - b.weekday : a.startTime < b.startTime ? -1 : 1;
+    }).forEach(function (rule) {
+      const li = el("li", "rule-item");
+      const text = el("div", "rule-text");
+      text.appendChild(el("p", "rule-main", L.describeRule(rule)));
+      const range = ruleRangeText(rule);
+      if (range) text.appendChild(el("p", "rule-range", range));
+      li.append(
+        text,
+        iconButton(L.describeRule(rule) + "を編集", "M4 20h4L19 9l-4-4L4 16z", function () { openRuleForm(rule); }),
+        iconButton(L.describeRule(rule) + "を削除", "M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13", function () { deleteRule(rule); }, true)
+      );
+      ruleList.appendChild(li);
+    });
+
+    const items = L.upcoming(data);
+    const next = L.nextLesson(items);
+    $("tutor-lessons-empty").textContent = data.rules.length
+      ? "これからの予定はありません"
+      : "予定はまだありません";
+    $("tutor-lessons-empty").hidden = items.length > 0;
+    items.forEach(function (x) {
+      const li = el("li", "lesson-row" + (x.cancelled ? " is-cancelled" : ""));
+      const main = el("div", "lesson-row-main");
+      main.append(el("span", "lesson-row-date", L.shortDate(x.date)), el("span", "lesson-row-time", L.timeRange(x)));
+      li.appendChild(main);
+      if (x === next) li.appendChild(el("span", "lesson-tag tag-next", x.ongoing ? "授業中" : "次回"));
+      if (x.kind === "extra") li.appendChild(el("span", "lesson-tag tag-extra", "追加"));
+      if (x.cancelled) li.appendChild(el("span", "lesson-tag tag-off", "休み"));
+
+      const actions = el("div", "lesson-actions");
+      if (x.kind === "weekly" && x.cancelled) {
+        actions.appendChild(miniButton("休みを取り消す", function () { setCancelled(x, false); }));
+      } else if (x.kind === "weekly") {
+        actions.append(
+          miniButton("日時を変更", function () { openLessonForm("move", x); }),
+          miniButton("休みにする", function () { setCancelled(x, true); })
+        );
+      } else {
+        actions.append(
+          miniButton("変更", function () { openLessonForm("edit", x); }),
+          miniButton("削除", function () { deleteLesson(x); }, true)
+        );
+      }
+      if (x.note) li.appendChild(el("p", "lesson-note", x.note));
+      li.appendChild(actions);
+      list.appendChild(li);
+    });
+  }
+
+  async function lessonAction(action, params) {
+    showError($("tutor-lessons-error"), "");
+    try {
+      await api(action, Object.assign({ studentId: state.selectedId }, params));
+      await loadLessons();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("tutor-lessons-error"), err.message);
+    }
+  }
+
+  function setCancelled(item, cancelled) {
+    const L = window.Lessons;
+    const label = L.shortDate(item.date) + " " + L.timeRange(item);
+    const question = cancelled ? label + " の授業をお休みにしますか？" : label + " の授業を元に戻しますか？";
+    if (!window.confirm(question)) return;
+    lessonAction("tutorSetLessonCancelled", { ruleId: item.ruleId, date: item.date, cancelled: cancelled });
+  }
+
+  function deleteLesson(item) {
+    const L = window.Lessons;
+    if (!window.confirm(L.shortDate(item.date) + " " + L.timeRange(item) + " の授業を削除しますか？")) return;
+    lessonAction("tutorDeleteLesson", { lessonId: item.lessonId });
+  }
+
+  function deleteRule(rule) {
+    const L = window.Lessons;
+    if (!window.confirm("「" + L.describeRule(rule) + "」を削除しますか？\nこれからの予定からも消えます（追加した授業は残ります）。")) return;
+    lessonAction("tutorDeleteLessonRule", { ruleId: rule.ruleId });
+  }
+
+  function openRuleForm(rule) {
+    state.editingRule = rule || null;
+    state.formRuleWeekday = rule ? rule.weekday : null;
+    $("rule-form-title").textContent = rule ? "毎週の授業を編集" : "毎週の授業を追加";
+    $("rule-start-time").value = rule ? rule.startTime : "";
+    $("rule-end-time").value = rule ? rule.endTime : "";
+    $("rule-start-date").value = rule ? rule.startDate : window.Lessons.nowInTokyo().date;
+    $("rule-end-date").value = rule && rule.endDate ? rule.endDate : "";
+    showError($("rule-error"), "");
+    renderRuleWeekdays();
+    $("rule-panel").hidden = false;
+  }
+
+  function closeRuleForm() {
+    $("rule-panel").hidden = true;
+    state.editingRule = null;
+  }
+
+  function renderRuleWeekdays() {
+    const box = $("rule-weekdays");
+    box.replaceChildren();
+    WEEKDAY_LABELS.forEach(function (label, i) {
+      const b = el("button", "", label);
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(state.formRuleWeekday === i));
+      b.setAttribute("aria-label", label + "曜日");
+      b.addEventListener("click", function () {
+        state.formRuleWeekday = i;
+        renderRuleWeekdays();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  async function saveRule(event) {
+    event.preventDefault();
+    const rule = {
+      ruleId: state.editingRule ? state.editingRule.ruleId : undefined,
+      weekday: state.formRuleWeekday,
+      startTime: $("rule-start-time").value,
+      endTime: $("rule-end-time").value,
+      startDate: $("rule-start-date").value,
+      endDate: $("rule-end-date").value || null
+    };
+    // サーバーでも検証するが、よくある入力漏れはその場で知らせる
+    if (rule.weekday === null) return showError($("rule-error"), "曜日を選んでください");
+    if (!rule.startTime || !rule.endTime) return showError($("rule-error"), "開始と終了の時刻を入力してください");
+    if (rule.endTime <= rule.startTime) return showError($("rule-error"), "終了の時刻は開始より後にしてください");
+    const button = $("rule-save");
+    button.disabled = true;
+    button.textContent = "保存しています…";
+    try {
+      await api("tutorSaveLessonRule", { studentId: state.selectedId, rule: rule });
+      closeRuleForm();
+      await loadLessons();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("rule-error"), err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = "保存";
+    }
+  }
+
+  /** "19:00" に分を足す。追加の授業の終了時刻を、開始に合わせて自動で入れるため */
+  function addMinutes(t, minutes) {
+    const p = t.split(":");
+    const total = Math.min(23 * 60 + 59, Number(p[0]) * 60 + Number(p[1]) + minutes);
+    return String(Math.floor(total / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+  }
+
+  function minutesBetween(a, b) {
+    const pa = a.split(":");
+    const pb = b.split(":");
+    return (Number(pb[0]) * 60 + Number(pb[1])) - (Number(pa[0]) * 60 + Number(pa[1]));
+  }
+
+  function openLessonForm(mode, item) {
+    const L = window.Lessons;
+    state.lessonForm = { mode: mode, item: item || null };
+    const lead = $("lesson-form-lead");
+    $("lesson-form-title").textContent = mode === "move" ? "日時を変更" : mode === "edit" ? "授業を変更" : "授業を追加";
+    if (mode === "move") {
+      lead.textContent = L.shortDate(item.date) + " " + L.timeRange(item) + " の授業はお休みになり、ここで選んだ日時に移ります";
+    }
+    lead.hidden = mode !== "move";
+    // 新しく足すときは、毎週の授業と同じ長さを最初から入れておく
+    const base = item || (state.lessons && state.lessons.rules[0]) || null;
+    $("lesson-date").value = item ? item.date : "";
+    $("lesson-start-time").value = base ? base.startTime : "";
+    $("lesson-end-time").value = base ? base.endTime : "";
+    $("lesson-note").value = mode === "edit" ? item.note : mode === "move" ? "振替" : "";
+    $("lesson-start-time").dataset.prev = $("lesson-start-time").value;
+    $("lesson-date").min = L.nowInTokyo().date;
+    showError($("lesson-error"), "");
+    $("lesson-panel").hidden = false;
+  }
+
+  function closeLessonForm() {
+    $("lesson-panel").hidden = true;
+    state.lessonForm = null;
+  }
+
+  /** 開始時刻を変えたら、授業の長さを保ったまま終了時刻もずらす */
+  function onLessonStartChange() {
+    const start = $("lesson-start-time");
+    const end = $("lesson-end-time");
+    const prev = start.dataset.prev;
+    if (prev && end.value && start.value) {
+      const length = minutesBetween(prev, end.value);
+      if (length > 0) end.value = addMinutes(start.value, length);
+    }
+    start.dataset.prev = start.value;
+  }
+
+  async function saveLesson(event) {
+    event.preventDefault();
+    const form = state.lessonForm;
+    if (!form) return;
+    const lesson = {
+      lessonId: form.mode === "edit" ? form.item.lessonId : undefined,
+      date: $("lesson-date").value,
+      startTime: $("lesson-start-time").value,
+      endTime: $("lesson-end-time").value,
+      note: $("lesson-note").value.trim()
+    };
+    if (!lesson.date) return showError($("lesson-error"), "日付を入力してください");
+    if (!lesson.startTime || !lesson.endTime) return showError($("lesson-error"), "開始と終了の時刻を入力してください");
+    if (lesson.endTime <= lesson.startTime) return showError($("lesson-error"), "終了の時刻は開始より後にしてください");
+    const params = { studentId: state.selectedId, lesson: lesson };
+    if (form.mode === "move") params.replaces = { ruleId: form.item.ruleId, date: form.item.date };
+    const button = $("lesson-save");
+    button.disabled = true;
+    button.textContent = "保存しています…";
+    try {
+      await api("tutorSaveLesson", params);
+      closeLessonForm();
+      await loadLessons();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("lesson-error"), err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = "保存";
+    }
+  }
+
   function startPolling() {
     stopPolling();
     if (document.visibilityState === "hidden") return;
@@ -1008,6 +1321,16 @@
       b.addEventListener("click", function () { switchView(b.dataset.view); });
     });
     $("add-goal").addEventListener("click", function () { openGoalForm(null); });
+    $("add-rule").addEventListener("click", function () { openRuleForm(null); });
+    $("rule-close").addEventListener("click", closeRuleForm);
+    $("rule-panel").addEventListener("click", function (e) { if (e.target === $("rule-panel")) closeRuleForm(); });
+    $("rule-form").addEventListener("submit", saveRule);
+    $("add-lesson").addEventListener("click", function () { openLessonForm("add", null); });
+    $("lesson-close").addEventListener("click", closeLessonForm);
+    $("lesson-panel").addEventListener("click", function (e) { if (e.target === $("lesson-panel")) closeLessonForm(); });
+    $("lesson-form").addEventListener("submit", saveLesson);
+    $("lesson-start-time").addEventListener("focus", function () { this.dataset.prev = this.value; });
+    $("lesson-start-time").addEventListener("change", onLessonStartChange);
     $("photo-viewer-close").addEventListener("click", closePlanPhoto);
     $("goal-close").addEventListener("click", closeGoalForm);
     $("goal-panel").addEventListener("click", function (e) { if (e.target === $("goal-panel")) closeGoalForm(); });
