@@ -329,6 +329,7 @@
           $("plan-error").textContent = message;
           $("plan-error").hidden = false;
         },
+        onSavingChange: function (saving) { $("plan-saving").hidden = !saving; },
         onTakePhoto: takePlanPhoto,
         onOpenPhoto: openPlanPhoto
       });
@@ -415,6 +416,21 @@
     } finally {
       state.loadingPlan = false;
     }
+  }
+
+  /**
+   * アプリが隠れる・閉じられる直前に、まだ送れていないチェックを sendBeacon で送る。
+   * スマホは画面を消したりアプリを切り替えたりすると通信を止めるが、sendBeacon は閉じた後もブラウザが送り届ける。
+   * 応答は受け取れないので、次に計画を開いたときにサーバーの状態に揃う
+   */
+  function sendPendingProgress() {
+    const view = state.planView;
+    if (!view || !state.token || !navigator.sendBeacon) return;
+    view.takePending().forEach(function (item) {
+      const body = JSON.stringify({ action: "setProgress", token: state.token, goalId: item.goalId, studyDate: item.date, throughPage: item.through });
+      // text/plain にする理由は api() と同じ（CORS のプリフライトを起こさない）
+      navigator.sendBeacon(GAS_URL, new Blob([body], { type: "text/plain;charset=utf-8" }));
+    });
   }
 
   /** 開きっぱなしで朝6時をまたいだら、組み替え後の計画を取り直す */
@@ -667,6 +683,7 @@
     if (!state.token) return;
     if (document.visibilityState === "hidden") {
       stopPolling();
+      sendPendingProgress();
     } else {
       loadMessages();
       if (state.tab === "submit" && state.submit.status === "idle") loadHistory();
@@ -1364,6 +1381,8 @@
     $("viewer-share").addEventListener("click", shareViewerFile);
 
     document.addEventListener("visibilitychange", onVisibilityChange);
+    // iOS はアプリを上にスワイプして閉じたとき visibilitychange が来ないことがあるので、pagehide でも送る
+    window.addEventListener("pagehide", sendPendingProgress);
     window.addEventListener("popstate", onPopState);
   }
 

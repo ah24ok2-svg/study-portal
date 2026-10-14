@@ -38,6 +38,7 @@
    *   emptyText      目標が1つも無いときの文言
    *   onTakePhoto    (goal, entry, spread) => void。写真を撮る（生徒アプリのみ。spec §14.7）
    *   onOpenPhoto    (photo, canEdit) => void。撮った写真を見る
+ *   onSavingChange (saving: boolean) => void。チェックの送信中かどうか（生徒アプリが「保存しています…」を出す）
    *   order          並び順。生徒は毎日チェックするので "day" を先頭に、講師は全体を見るので "goals" を先頭にする
    */
   function PlanView(root, options) {
@@ -53,6 +54,10 @@
     const first = !this.data;
     const dayChanged = this.data && this.data.today !== data.today;
     this.data = { goals: data.goals.slice(), progress: data.progress.slice(), photos: (data.photos || []).slice(), today: data.today };
+    // サーバーで確定している記録。送信に失敗したとき、ここへ戻す
+    this.confirmed = data.progress.slice();
+    // 送信中・未送信のチェックがあるうちに取り直した計画で上書きすると、押したばかりのチェックが一瞬消えるので重ねて表示する
+    this.unsentItems().forEach(function (item) { applyRecord(this.data, item); }, this);
     this.uploading = this.uploading || {};
     if (first || dayChanged) {
       this.selected = data.today;
@@ -66,31 +71,97 @@
     this.plans = this.data ? P.computePlan(this.data.goals, this.data.progress, this.data.today) : [];
   };
 
+  function recordKey(goalId, date) {
+    return goalId + "|" + date;
+  }
+
+  /** 目標・日付ごとの記録（何ページ目まで）を1件だけにして置き換える。through が null なら消す */
+  function applyRecord(target, item) {
+    target.progress = target.progress.filter(function (r) { return !(r.goalId === item.goalId && r.studyDate === item.date); });
+    if (item.through !== null) target.progress.push({ goalId: item.goalId, studyDate: item.date, throughPage: item.through });
+  }
+
   /**
    * 送信を待たずに表示へ反映する。
-   * 1ページずつ素早く押されると、通信の届く順番が入れ替わってサーバーの記録が古い値で上書きされうるので、
-   * 送信は1件ずつ順番に行う
+   * 記録は「何ページ目まで」の1つの値なので、送信中に押された分は目標・日付ごとに最新の値1件にまとめて送る。
+   * 1ページずつ押した分をすべて送ると、GAS は1件1〜2秒かかるため10ページで10〜20秒かかり、
+   * その間にアプリを閉じると残りが届かず「チェックしたのに先生の画面に出ない」状態になる。
+   * 送信は1件ずつ順番に行う（届く順番が入れ替わると古い値で上書きされうるため）
    */
   PlanView.prototype.setProgress = function (goalId, date, through) {
-    const self = this;
-    const before = this.data.progress.slice();
-    this.data.progress = this.data.progress.filter(function (r) { return !(r.goalId === goalId && r.studyDate === date); });
-    if (through !== null) this.data.progress.push({ goalId: goalId, studyDate: date, throughPage: through });
+    const item = { goalId: goalId, date: date, through: through };
+    applyRecord(this.data, item);
     this.recompute();
     this.render();
+    this.pending = this.pending || {};
+    this.pending[recordKey(goalId, date)] = item;
+    this.flush();
+  };
 
-    const seq = (this.seq = (this.seq || 0) + 1);
-    this.queue = (this.queue || Promise.resolve()).then(function () {
-      return self.options.onSetProgress(goalId, date, through);
-    }).catch(function (err) {
-      // 後から押した分がまだ控えているなら、それが最新の状態を送るので戻さない
-      if (seq === self.seq) {
-        self.data.progress = before;
-        self.recompute();
-        self.render();
-      }
-      if (self.options.onError) self.options.onError(err && err.message ? err.message : "記録できませんでした");
-    });
+  PlanView.prototype.isSaving = function () {
+    return !!this.sending || Object.keys(this.pending || {}).length > 0;
+  };
+
+  /** まだサーバーに確定していない記録（送信中と未送信） */
+  PlanView.prototype.unsentItems = function () {
+    const pending = this.pending || {};
+    const items = Object.keys(pending).map(function (k) { return pending[k]; });
+    return this.sending ? [this.sending].concat(items) : items;
+  };
+
+  /**
+   * 未送信の分を呼び出し側に渡して手放す。アプリが閉じられる直前に sendBeacon で送るため（spec §14.3）。
+   * 渡した分は送ったものとして扱い、次に計画を取り直したときにサーバーの状態に揃う
+   */
+  PlanView.prototype.takePending = function () {
+    const pending = this.pending || {};
+    const items = Object.keys(pending).map(function (k) { return pending[k]; });
+    this.pending = {};
+    this.notifySaving();
+    return items;
+  };
+
+  PlanView.prototype.notifySaving = function () {
+    const saving = this.isSaving();
+    if (saving !== this.lastSaving && this.options.onSavingChange) this.options.onSavingChange(saving);
+    this.lastSaving = saving;
+  };
+
+  PlanView.prototype.flush = function () {
+    const self = this;
+    if (this.sending) return;
+    const keys = Object.keys(this.pending || {});
+    if (keys.length === 0) {
+      this.notifySaving();
+      return;
+    }
+    const item = this.pending[keys[0]];
+    delete this.pending[keys[0]];
+    this.sending = item;
+    this.notifySaving();
+    Promise.resolve()
+      .then(function () { return self.options.onSetProgress(item.goalId, item.date, item.through); })
+      .then(function () {
+        if (self.confirmed) {
+          const confirmed = { progress: self.confirmed };
+          applyRecord(confirmed, item);
+          self.confirmed = confirmed.progress;
+        }
+      }, function (err) {
+        // 同じ日の新しい値が控えていれば、それが最新の状態を送るので戻さない。
+        // 控えていなければ、サーバーで確定している状態に戻す（押した直前の状態は未保存のことがあるため）
+        if (!self.pending[recordKey(item.goalId, item.date)] && self.confirmed) {
+          const saved = self.confirmed.find(function (r) { return r.goalId === item.goalId && r.studyDate === item.date; });
+          applyRecord(self.data, { goalId: item.goalId, date: item.date, through: saved ? saved.throughPage : null });
+          self.recompute();
+          self.render();
+        }
+        if (self.options.onError) self.options.onError(err && err.message ? err.message : "記録できませんでした");
+      })
+      .then(function () {
+        self.sending = null;
+        self.flush();
+      });
   };
 
   PlanView.prototype.render = function () {

@@ -442,6 +442,14 @@ body.viewer-open { overflow: hidden; }
 
 .plan-panel { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .plan-error { margin: 12px 16px 0; }
+/* 送り終わる前にアプリを閉じないよう、スクロールしても見える位置に出す */
+.plan-saving {
+  position: sticky; top: 8px; z-index: 5;
+  width: fit-content; margin: 8px auto -36px; padding: 4px 14px;
+  background: var(--ink); color: #fff; border-radius: 999px;
+  font-size: 13px; font-weight: 700;
+}
+.plan-saving[hidden] { display: none; }
 .plan-root { padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 16px; }
 
 .plan-goals { display: flex; flex-direction: column; gap: 10px; }
