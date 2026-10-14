@@ -253,9 +253,14 @@ function describeSubmissionFile(fileStates, fileId, createdAtIso) {
     }
   }
   const state = fileStates[fileId];
-  if (!state || state.trashed) return { available: false, annotated: false };
+  if (!state || state.trashed) return { available: false, annotated: false, version: 0 };
   const createdMs = createdAtIso ? new Date(createdAtIso).getTime() : 0;
-  return { available: true, annotated: createdMs > 0 && state.updatedAt - createdMs > ANNOTATION_GRACE_MS };
+  return {
+    available: true,
+    annotated: createdMs > 0 && state.updatedAt - createdMs > ANNOTATION_GRACE_MS,
+    // 講師アプリが先読みしたファイルを使い回してよいかの判定に使う。書き込んで上書きすると変わる
+    version: state.updatedAt
+  };
 }
 
 /** 講師が書き込んだ最新版を含め、Drive にある今のファイルを本人にだけ返す（spec §13.4） */

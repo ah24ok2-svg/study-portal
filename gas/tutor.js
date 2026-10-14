@@ -186,7 +186,8 @@ function handleTutorGetThread(req) {
         note: String(r.values[6] || ""),
         createdAt: createdAt,
         available: state.available,
-        annotated: state.annotated
+        annotated: state.annotated,
+        version: state.version
       };
     });
   submissions.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0; });

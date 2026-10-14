@@ -35,6 +35,13 @@ module.exports = function (t) {
   t("tutor thread", r.ok && r.data.messages.length === 3 && r.data.submissions.length === 2);
   t("tutor reply", call({ action: "tutorSendMessage", tutorToken: tt, studentId: a.studentId, body: "見ました" }).ok);
   t("reply visible", call({ action: "getMessages", token: a.token }).data.messages.at(-1).body === "見ました");
+  // 先読みの使い回しの判定に使う版。講師が書き込んで上書きすると変わる（spec §13.8）
+  const v1 = call({ action: "tutorGetThread", tutorToken: tt, studentId: a.studentId }).data.submissions.find((x) => x.id === subId).version;
+  const fid = sheets.submissions.data.find((row) => row[0] === subId)[2];
+  m.files[fid].f.updatedAt += 60 * 60 * 1000;
+  const v2 = call({ action: "tutorGetThread", tutorToken: tt, studentId: a.studentId }).data.submissions.find((x) => x.id === subId).version;
+  t("submission version changes on overwrite", typeof v1 === "number" && v1 > 0 && v2 > v1, [v1, v2]);
+
   // 講師アプリでのプレビュー（spec §13.8）
   r = call({ action: "tutorGetSubmissionFile", tutorToken: tt, submissionId: subId });
   t("tutor preview", r.ok && r.data.mimeType === "application/pdf" && Buffer.from(r.data.dataBase64, "base64").toString().includes("v1"), r);

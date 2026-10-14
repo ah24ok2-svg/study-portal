@@ -218,6 +218,7 @@
     closeLessonForm();
     closeGoalForm();
     closeFileViewer();
+    fileCache.clear();
     stopPolling();
     showLogin(message);
   }
@@ -404,6 +405,7 @@
       if (state.selectedId !== studentId) return;
       const stick = (options && options.scrollToBottom) || isNearBottom(list);
       state.thread = data;
+      prefetchLatestSubmission(data.submissions);
       writeCache("thread." + studentId, data);
       showError($("messages-error"), "");
       renderThread();
@@ -521,9 +523,39 @@
 
   /** 提出物の中身をその場で確認する（spec §13.8）。書き込みは今までどおり PDF ビューアで Drive のファイルに行う */
   function openSubmission(s) {
-    openFileViewer(s.fileName, function () {
-      return api("tutorGetSubmissionFile", { submissionId: s.id });
+    openFileViewer(s.fileName, function () { return fetchSubmission(s); });
+  }
+
+  // 提出物の先読み（spec §13.8）。GAS 経由だと数MBの PDF は届くまでに数秒かかり、授業中に開くと待ち時間で授業が止まる。
+  // 生徒が提出してから講師が開くまでの間に読み込んでおき、タップした瞬間に出せるようにする
+  const PREFETCH_WITHIN_MS = 12 * 60 * 60 * 1000;
+  const FILE_CACHE_MAX = 6;
+  // submissionId → { version, promise }。version は Drive の更新時刻で、講師が書き込んで上書きすると変わる
+  const fileCache = new Map();
+
+  function fetchSubmission(s) {
+    const hit = fileCache.get(s.id);
+    if (hit && hit.version === s.version) return hit.promise;
+    const promise = api("tutorGetSubmissionFile", { submissionId: s.id });
+    fileCache.delete(s.id);
+    fileCache.set(s.id, { version: s.version, promise: promise });
+    // 失敗したものは残さず、次に開いたときに取り直す
+    promise.catch(function () {
+      const current = fileCache.get(s.id);
+      if (current && current.promise === promise) fileCache.delete(s.id);
     });
+    // 古いものから捨てる（Map は入れた順に並ぶ）
+    while (fileCache.size > FILE_CACHE_MAX) fileCache.delete(fileCache.keys().next().value);
+    return promise;
+  }
+
+  /** 最新の提出物が最近のものなら裏で読み込む。表示に使う pdf.js も一緒に読み込んでおく */
+  function prefetchLatestSubmission(submissions) {
+    const s = submissions && submissions[0];
+    if (!s || !s.available || !s.createdAt) return;
+    if (Date.now() - new Date(s.createdAt).getTime() > PREFETCH_WITHIN_MS) return;
+    fetchSubmission(s).catch(function () { /* 開いたときに取り直してエラーを出す */ });
+    window.PdfView.load().catch(function () { /* 同上 */ });
   }
 
   function autoGrowComposer() {

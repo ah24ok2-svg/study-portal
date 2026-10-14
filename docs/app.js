@@ -12,8 +12,17 @@
   const MESSAGES_CACHE_LIMIT = 100;
   const POLL_INTERVAL_MS = 30 * 1000;
   const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-  const MAX_EDGE_PX = 2000;
-  const JPEG_QUALITY = 0.8;
+  // 1ページの目安。影やノイズの多い写真は同じ解像度でも2倍以上重くなり、講師の iPad での表示が遅れて授業が止まるため、
+  // これを超えたら画質→解像度の順に落とす（spec §8.1）
+  const PAGE_TARGET_BYTES = 300 * 1024;
+  // 上から順に試し、目安に収まった段で止める。最後の段（長辺1400px・画質0.6）でも手書きの文字は読める
+  const JPEG_STEPS = [
+    { edge: 2000, quality: 0.8 },
+    { edge: 2000, quality: 0.7 },
+    { edge: 1600, quality: 0.7 },
+    { edge: 1600, quality: 0.6 },
+    { edge: 1400, quality: 0.6 }
+  ];
   const THUMB_EDGE_PX = 240;
   const DONE_AUTO_RETURN_MS = 3000;
   const TIME_ZONE = "Asia/Tokyo";
@@ -860,23 +869,39 @@
    * 撮影画像を長辺2000px・JPEG品質0.8に縮小する。
    * 元の 3〜5MB のままだと3ページで上限20MBに達するため、この処理は省略できない
    */
+  function drawScaled(bitmap, edge) {
+    const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    // 透過PNGの背景が黒くならないように白で塗る
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
   async function processImage(file) {
     // imageOrientation を指定しないと、縦構えで撮った答案が90度倒れる
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    let canvas = null;
     try {
-      const scale = Math.min(1, MAX_EDGE_PX / Math.max(bitmap.width, bitmap.height));
-      const width = Math.round(bitmap.width * scale);
-      const height = Math.round(bitmap.height * scale);
-
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      // 透過PNGの背景が黒くならないように白で塗る
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(bitmap, 0, 0, width, height);
-      const blob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
+      let blob = null;
+      let edge = 0;
+      for (let i = 0; i < JPEG_STEPS.length; i++) {
+        const step = JPEG_STEPS[i];
+        if (step.edge !== edge) {
+          // iOS Safari は canvas の合計メモリに上限があるので、作り直す前に前の canvas を解放する
+          if (canvas) canvas.width = canvas.height = 0;
+          canvas = drawScaled(bitmap, step.edge);
+          edge = step.edge;
+        }
+        blob = await canvasToBlob(canvas, "image/jpeg", step.quality);
+        if (blob.size <= PAGE_TARGET_BYTES) break;
+      }
+      const width = canvas.width;
+      const height = canvas.height;
 
       const thumbScale = Math.min(1, THUMB_EDGE_PX / Math.max(width, height));
       const thumb = document.createElement("canvas");
@@ -884,9 +909,6 @@
       thumb.height = Math.round(height * thumbScale);
       thumb.getContext("2d").drawImage(canvas, 0, 0, thumb.width, thumb.height);
       const thumbBlob = await canvasToBlob(thumb, "image/jpeg", 0.7);
-
-      // iOS Safari は canvas の合計メモリに上限があり、解放しないと数ページで描画できなくなる
-      canvas.width = canvas.height = 0;
       thumb.width = thumb.height = 0;
 
       return {
@@ -897,6 +919,7 @@
         thumbUrl: URL.createObjectURL(thumbBlob)
       };
     } finally {
+      if (canvas) canvas.width = canvas.height = 0;
       if (bitmap.close) bitmap.close();
     }
   }
