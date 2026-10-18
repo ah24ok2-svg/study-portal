@@ -71,6 +71,7 @@
               <button id="seg-lessons" type="button" role="tab" aria-selected="false" data-view="lessons">授業</button>
               <button id="seg-plan" type="button" role="tab" aria-selected="false" data-view="plan">計画</button>
               <button id="seg-submissions" type="button" role="tab" aria-selected="false" data-view="submissions">提出物 <span id="submission-count" class="count"></span></button>
+              <button id="seg-billing" type="button" role="tab" aria-selected="false" data-view="billing">請求</button>
             </div>
           </div>
 
@@ -103,6 +104,18 @@
               </div>
               <ul id="tutor-lesson-list" class="lesson-list"></ul>
               <p id="tutor-lessons-empty" class="empty" hidden>予定はまだありません</p>
+            </div>
+          </div>
+
+          <!-- 請求（spec §16） -->
+          <div id="view-billing" class="detail-view billing-view" hidden>
+            <div class="billing-inner">
+              <p id="tutor-billing-error" class="inline-error" role="alert" hidden></p>
+              <div class="billing-setup">
+                <span class="billing-setup-item">学年: <strong id="billing-grade">未設定</strong> <button id="grade-button" type="button" class="link-button">変更</button></span>
+                <span class="billing-setup-item">保護者の合言葉: <button id="parent-token-button" type="button" class="link-button">発行</button></span>
+              </div>
+              <div id="tutor-billing-root" class="billing-months"></div>
             </div>
           </div>
 
@@ -219,6 +232,48 @@
     </form>
   </div>
 
+  <!-- 学年の設定（spec §16） -->
+  <div id="grade-panel" class="sheet-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="grade-title">
+      <div class="sheet-head">
+        <h2 id="grade-title">学年を設定</h2>
+        <button id="grade-close" type="button" class="icon-button" aria-label="閉じる">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p class="hint" style="margin:0 0 10px">今年度の学年を選んでください。4月になると自動で1つ上がります。中3以上は1回3,000円、それ以外は2,000円です</p>
+      <div id="grade-options" class="grade-options" role="radiogroup" aria-label="学年"></div>
+      <p id="grade-error" class="inline-error" role="alert" hidden></p>
+    </div>
+  </div>
+
+  <!-- 保護者の合言葉（spec §16） -->
+  <div id="parent-token-panel" class="sheet-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="parent-token-title">
+      <div class="sheet-head">
+        <h2 id="parent-token-title">保護者の合言葉</h2>
+        <button id="parent-token-close" type="button" class="icon-button" aria-label="閉じる">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p id="parent-token-lead" class="push-status"></p>
+      <p id="parent-token-value" class="token-result" hidden></p>
+      <p id="parent-token-error" class="inline-error" role="alert" hidden></p>
+      <div class="sheet-actions">
+        <button id="parent-token-issue" type="button" class="btn btn-primary btn-block">発行する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 領収書（spec §16） -->
+  <div id="receipt-view" class="receipt-view" role="dialog" aria-modal="true" aria-label="領収書" hidden>
+    <div class="receipt-bar">
+      <button id="receipt-close" type="button" class="link-button">閉じる</button>
+      <button id="receipt-print" type="button" class="btn btn-secondary">印刷・保存</button>
+    </div>
+    <div id="receipt-body" class="receipt-body"></div>
+  </div>
+
   <!-- 毎週の授業の追加・編集（spec §15） -->
   <div id="rule-panel" class="sheet-backdrop" hidden>
     <form id="rule-form" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="rule-form-title" novalidate>
@@ -303,6 +358,8 @@
   <script src="../config.js"></script>
   <script src="../pdf-view.js"></script>
   <script src="../lessons.js"></script>
+  <script src="../billing.js"></script>
+  <script src="../billing-ui.js"></script>
   <script src="../plan.js"></script>
   <script src="../plan-ui.js"></script>
   <script src="../decor.js" defer></script>

@@ -37,20 +37,17 @@
   }
 
   /**
-   * これからの授業の一覧。終わった授業は含めない（授業中のものは含める）。
+   * from〜to（両端を含む）の授業を日付順に展開する。
    * 毎週の授業を休みにした日も cancelled: true で残す。生徒が「今週は休み」と分かるようにするため
    */
-  function upcoming(data, now, options) {
-    const days = (options && options.days) || DEFAULT_DAYS;
-    const n = nowInTokyo(now);
+  function occurrences(data, from, to) {
     const rules = (data && data.rules) || [];
     const changes = (data && data.changes) || [];
     const cancelled = {};
     changes.forEach(function (c) { if (c.kind === "cancel") cancelled[c.ruleId + "|" + c.date] = true; });
 
     const items = [];
-    for (let i = 0; i < days; i++) {
-      const d = addDays(n.date, i);
+    for (let d = from; d <= to; d = addDays(d, 1)) {
       const wd = weekday(d);
       rules.forEach(function (r) {
         if (r.weekday !== wd || d < r.startDate || (r.endDate && d > r.endDate)) return;
@@ -61,20 +58,36 @@
       });
     }
     changes.forEach(function (c) {
-      if (c.kind !== "extra") return;
+      if (c.kind !== "extra" || c.date < from || c.date > to) return;
       items.push({ kind: "extra", lessonId: c.lessonId, date: c.date, startTime: c.startTime, endTime: c.endTime, note: c.note || "", cancelled: false });
     });
+    return items.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      if (a.startTime !== b.startTime) return a.startTime < b.startTime ? -1 : 1;
+      return a.kind === b.kind ? 0 : a.kind === "weekly" ? -1 : 1;
+    });
+  }
 
-    return items
-      .filter(function (x) { return x.date > n.date || (x.date === n.date && x.endTime > n.time); })
+  /** その授業が終わっているか（請求では「実施した」として数える） */
+  function isOver(item, n) {
+    return item.date < n.date || (item.date === n.date && item.endTime <= n.time);
+  }
+
+  /**
+   * これからの授業の一覧。終わった授業は含めない（授業中のものは含める）。
+   * 毎週の授業は days 日先まで、追加した授業はそれより先でも出す
+   */
+  function upcoming(data, now, options) {
+    const days = (options && options.days) || DEFAULT_DAYS;
+    const n = nowInTokyo(now);
+    const far = ((data && data.changes) || []).reduce(function (m, c) { return c.kind === "extra" && c.date > m ? c.date : m; }, n.date);
+    const items = occurrences(data, n.date, addDays(n.date, days - 1));
+    const extras = occurrences({ rules: [], changes: (data && data.changes) || [] }, addDays(n.date, days), far);
+    return items.concat(extras)
+      .filter(function (x) { return !isOver(x, n); })
       .map(function (x) {
         x.ongoing = !x.cancelled && x.date === n.date && x.startTime <= n.time;
         return x;
-      })
-      .sort(function (a, b) {
-        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-        if (a.startTime !== b.startTime) return a.startTime < b.startTime ? -1 : 1;
-        return a.kind === b.kind ? 0 : a.kind === "weekly" ? -1 : 1;
       });
   }
 
@@ -124,6 +137,8 @@
     nowInTokyo: nowInTokyo,
     addDays: addDays,
     weekday: weekday,
+    occurrences: occurrences,
+    isOver: isOver,
     upcoming: upcoming,
     nextLesson: nextLesson,
     shortDate: shortDate,

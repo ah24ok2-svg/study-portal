@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Study Portal 保護者</title>
+  <meta name="theme-color" content="#ff9f1a">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="SP 保護者">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="../icons/icon-192.png">
+  <link rel="icon" type="image/png" href="../icons/icon-192.png">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="parent.css">
+</head>
+<body>
+  <!-- ログイン -->
+  <section id="login-view" class="login" hidden>
+    <div class="login-card">
+      <div class="login-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="32" height="32"><path d="M12 3l9 4.5-9 4.5-9-4.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6.5 9.5V14c0 1.7 2.5 3 5.5 3s5.5-1.3 5.5-3V9.5M21 7.5V13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1>Study Portal <span class="role-badge">保護者</span></h1>
+      <p class="login-lead">先生から受け取った保護者用の合言葉を入力してください。</p>
+      <form id="login-form" novalidate>
+        <label for="token-input" class="field-label">合言葉</label>
+        <input id="token-input" class="input token-input" type="text" inputmode="latin" autocapitalize="off"
+          autocomplete="off" autocorrect="off" spellcheck="false" maxlength="32" placeholder="例: k7m2p9x4wq3nz8vb"
+          aria-describedby="login-error">
+        <p id="login-error" class="field-error" role="alert"></p>
+        <button id="login-button" type="submit" class="btn btn-primary btn-block">はじめる</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- メイン -->
+  <div id="app-view" class="app" hidden>
+    <header class="app-header">
+      <div class="app-header-name"><span id="student-name"></span><span class="honorific">さんの保護者</span></div>
+      <button id="logout-button" type="button" class="link-button">ログアウト</button>
+    </header>
+
+    <!-- 授業料（spec §16） -->
+    <main id="tab-billing" class="tab-panel billing-panel" role="tabpanel" aria-labelledby="tabbtn-billing">
+      <p id="billing-error" class="inline-error billing-error" role="alert" hidden></p>
+      <div id="billing-root" class="billing-root"></div>
+    </main>
+
+    <!-- 計画（spec §14） -->
+    <main id="tab-plan" class="tab-panel plan-panel" role="tabpanel" aria-labelledby="tabbtn-plan" hidden>
+      <div id="plan-root" class="plan-root"></div>
+    </main>
+
+    <nav class="tabbar tabbar-2" role="tablist">
+      <button id="tabbtn-billing" type="button" class="tab" role="tab" aria-selected="true" aria-controls="tab-billing" data-tab="billing">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 9.5h.01M17.5 14.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>授業料</span>
+      </button>
+      <button id="tabbtn-plan" type="button" class="tab" role="tab" aria-selected="false" aria-controls="tab-plan" data-tab="plan">
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24"><rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 9.5h16M8.5 3v4M15.5 3v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8.5 14.5l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>計画</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- 領収書 -->
+  <div id="receipt-view" class="receipt-view" role="dialog" aria-modal="true" aria-label="領収書" hidden>
+    <div class="receipt-bar">
+      <button id="receipt-close" type="button" class="link-button">閉じる</button>
+      <button id="receipt-print" type="button" class="btn btn-secondary">印刷・保存</button>
+    </div>
+    <div id="receipt-body" class="receipt-body"></div>
+  </div>
+
+  <script src="../config.js"></script>
+  <script src="../lessons.js"></script>
+  <script src="../billing.js"></script>
+  <script src="../billing-ui.js"></script>
+  <script src="../plan.js"></script>
+  <script src="../plan-ui.js"></script>
+  <script src="../decor.js" defer></script>
+  <script src="parent.js" defer></script>
+</body>
+</html>

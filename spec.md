@@ -971,3 +971,80 @@ Script Properties に追加する値:
   - 毎週の授業: 「日時を変更」「休みにする」（休みの日は「休みを取り消す」）
   - 追加した授業: 「変更」「削除」
 - 授業を追加するときは、毎週の授業と同じ時間を最初から入れておく。開始時刻を変えると、長さを保ったまま終了時刻もずれる
+
+---
+
+## 16. 保護者アプリ（計画の進み具合と授業料）
+
+保護者が「学習が進んでいるか」と「今月いくら払うか」をアプリで確かめられるようにする。授業料は PayPay で受け取り、入金を講師が確認すると領収書が出る。
+
+### 16.1 基本の考え方
+
+- 保護者は生徒とは別の合言葉でログインする。講師アプリから発行する
+- 保護者に見せるのは **計画（目標・進み具合）と授業料** だけ。やりとり・提出物・計画の写真は見せない（生徒と講師の間のもの）
+- 授業料の計算はサーバーでは行わない。授業の予定（§15）と学年から `docs/billing.js` が端末で計算する。保存するのは「入金を確認した」記録だけ
+- **単価**: 中3以上は1回 3,000円、それ以外（中2まで・小学生）は 2,000円
+- **学年**は "2026:中1"（2026年度に中1）の形で保存し、4月になると端末側で1つ上がる。毎年の更新を忘れても請求が狂わないようにするため。高3の翌年度は「高校卒業後」として3,000円
+- **実施した授業** = 予定（毎週の授業と追加した授業）のうち、終わった時刻を過ぎていて、休みにしていないもの
+  - 実施しなかった授業は講師が「休みにする」で外す。請求を直せるよう、講師は **3か月前まで** 過ぎた日の授業を休みにしたり足したりできる（`LESSON_PAST_DAYS_MAX`）
+  - `getLessons` / `tutorGetLessons` は3か月前からの変更を返す
+- **支払い期限は翌月末**（10月分は 11/30）
+- **PayPay**: 講師の受け取りリンク（PayPay アプリの「マイコード」を共有したときの URL）を Script Properties `PAYPAY_LINK` に置く。保護者アプリの「PayPay で支払う」を押すとそのリンクが開き、金額を入れて送る。QR コードは出さない（スマホで見るので、リンクで足りる）
+- **領収書**: 講師が「入金を確認した」と記録した月に出る。金額・回数・実施日は記録した時点の値を使い、後から予定を直しても変わらない。発行者名は Script Properties `TUTOR_NAME`。電子的に発行するので収入印紙は不要。保護者は「印刷・保存」からブラウザの印刷（PDF 保存）に渡す
+
+### 16.2 データ
+
+**シート `students` に列を追加**
+| 列 | 名前 | 説明 |
+|---|---|---|
+| H | grade_base | `2026:中1` の形。空欄は未設定（金額が出ない） |
+| I | parent_token_hash | 保護者の合言葉の SHA-256。空欄は未発行 |
+
+**シート `payments`**（入金の記録）
+| 列 | 名前 | 説明 |
+|---|---|---|
+| A | payment_id | `pay_` + UUID |
+| B | student_id | |
+| C | month | `YYYY-MM`（書式なしテキスト）。生徒×月で1件 |
+| D | amount | 記録時の金額 |
+| E | lesson_count | 記録時の回数 |
+| F | lesson_dates | 実施日の JSON 配列 |
+| G | receipt_no | `YYYYMM-0001`。全生徒を通した連番で、消した番号は再利用しない（書式なしテキスト） |
+| H | recipient | 宛名（空欄なら生徒名 + 様） |
+| I | paid_at | 入金日 `YYYY-MM-DD` |
+| J | created_at | ISO 8601 |
+
+**Script Properties に追加**: `TUTOR_NAME`（領収書の発行者名）、`PAYPAY_LINK`（PayPay の受け取りリンク）。未設定でも他の機能は止まらず、講師アプリの請求画面に注意が出る
+
+### 16.3 API
+
+**保護者向け**（`parentToken` で認証。生徒の `token` や講師の `tutorToken` では通らない）
+- `parentLogin` `{ parentToken }` → `{ name }`
+- `parentGetSummary` `{ parentToken }` → `{ student: { name, gradeBase }, plan: { goals, progress, photos: [], today }, lessons: { rules, changes, today }, payments, tutorName, paypayLink, today }`
+
+**講師向け**（すべて `tutorToken` 必須）
+- `tutorGetBilling` `{ studentId }` → `{ gradeBase, parentTokenIssued, lessons, payments, tutorName, paypayLinkSet, today }`
+- `tutorSetGrade` `{ studentId, grade }` → `{ gradeBase }`（`grade` は 小1〜高3。今年度の学年として保存）
+- `tutorIssueParentToken` `{ studentId }` → `{ parentToken }`（平文はこの応答にだけ出る。再発行で前の合言葉は無効）
+- `tutorConfirmPayment` `{ studentId, payment: { month, amount, lessonDates, recipient?, paidAt? } }` → `{ paymentId, receiptNo }`
+  - 金額と実施日は講師アプリが `docs/billing.js` で計算して送る。同じ月に2件は作れない
+- `tutorCancelPayment` `{ studentId, paymentId }` → `{}`
+
+### 16.4 画面
+
+**保護者アプリ**（`docs/parent/`。公開 URL は `/study-portal/parent/`）
+- ログイン: 合言葉のみ
+- 「授業料」タブ: 今月から3か月前までの月ごとのカード（入金記録のある月はそれより前でも出す）
+  - 実施日の一覧（実施／予定／休み）、回数 × 単価、今月は「見込み」と「実施分」、支払い期限、入金の状態
+  - 未入金: 「PayPay で支払う」（受け取りリンクを開く）。月が終わる前は「月末に金額が確定してからお支払いください」
+  - 入金済み: 「領収書を見る」
+- 「計画」タブ: 生徒アプリと同じ計画の画面（チェックは付けられない）
+
+**講師アプリ**（生徒の画面に「請求」を追加）
+- 上部: 学年（変更）／保護者の合言葉（発行・再発行。平文は1度だけ表示）
+- 月ごとのカード（保護者と同じ内容）に加えて
+  - 過ぎた毎週の授業に「休みにする」「実施に戻す」（入金前のみ）
+  - 「入金を確認した（金額）」→ 入金記録を作る。月が終わる前に押すと、予定の分も含めた金額で記録する旨を確認する
+  - 入金済み: 領収書 No.、「領収書」、「入金を取り消す」
+  - 記録した金額と今の計算が違うときは注意を出す（領収書は記録した金額のまま）
+- 共有する画面部品は `docs/billing-ui.js`（月のカードと領収書）

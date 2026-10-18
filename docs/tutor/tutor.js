@@ -46,6 +46,9 @@
     formRuleWeekday: null,
     // 授業フォームの用途: 追加（item なし）／毎週の授業の日時を変える（move）／追加した授業を直す（edit）
     lessonForm: null,
+    // 請求（spec §16）。選んでいる生徒の { gradeBase, parentTokenIssued, lessons, payments, tutorName }
+    billing: null,
+    loadingBilling: null,
     // 通知から開いたときに、一覧の読み込み後に選ぶ生徒
     pendingStudentId: new URLSearchParams(location.search).get("student")
   };
@@ -214,6 +217,10 @@
     state.planView = null;
     $("tutor-plan-root").replaceChildren();
     state.lessons = null;
+    state.billing = null;
+    closeGradeSheet();
+    closeParentTokenSheet();
+    closeReceipt();
     closeRuleForm();
     closeLessonForm();
     closeGoalForm();
@@ -350,8 +357,11 @@
     if (changed) {
       state.lessons = readCache("lessons." + studentId);
       renderLessons();
+      state.billing = readCache("billing." + studentId);
+      renderBilling();
     }
     if (state.view === "lessons") loadLessons();
+    if (state.view === "billing") loadBilling();
     if (changed) {
       // 前の生徒の計画が一瞬でも見えないよう、作り直す
       state.planView = null;
@@ -380,8 +390,10 @@
     $("view-lessons").hidden = view !== "lessons";
     $("view-plan").hidden = view !== "plan";
     $("view-submissions").hidden = view !== "submissions";
+    $("view-billing").hidden = view !== "billing";
     if (view === "messages") scrollToBottom();
     if (view === "lessons") loadLessons();
+    if (view === "billing") loadBilling();
     if (view === "plan") loadPlan();
   }
 
@@ -1298,7 +1310,8 @@
     $("lesson-end-time").value = base ? base.endTime : "";
     $("lesson-note").value = mode === "edit" ? item.note : mode === "move" ? "振替" : "";
     $("lesson-start-time").dataset.prev = $("lesson-start-time").value;
-    $("lesson-date").min = L.nowInTokyo().date;
+    // 実施しなかった・急に足した授業を請求前に直せるよう、3か月前まで選べる（spec §16）
+    $("lesson-date").min = L.addDays(L.nowInTokyo().date, -92);
     showError($("lesson-error"), "");
     $("lesson-panel").hidden = false;
   }
@@ -1351,6 +1364,171 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 請求（spec §16）
+
+  async function loadBilling() {
+    const studentId = state.selectedId;
+    if (!studentId || state.loadingBilling === studentId) return;
+    state.loadingBilling = studentId;
+    try {
+      const data = await api("tutorGetBilling", { studentId: studentId });
+      if (state.selectedId !== studentId) return;
+      state.billing = data;
+      writeCache("billing." + studentId, data);
+      showError($("tutor-billing-error"), "");
+      renderBilling();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("tutor-billing-error"), err.message);
+    } finally {
+      if (state.loadingBilling === studentId) state.loadingBilling = null;
+    }
+  }
+
+  function renderBilling() {
+    const B = window.Billing;
+    const root = $("tutor-billing-root");
+    root.replaceChildren();
+    const data = state.billing;
+    if (!data) {
+      $("billing-grade").textContent = "…";
+      $("parent-token-button").textContent = "発行";
+      root.appendChild(el("p", "empty", "読み込んでいます…"));
+      return;
+    }
+    const grade = B.gradeOn(data.gradeBase, data.today);
+    $("billing-grade").textContent = grade ? grade.label : "未設定";
+    $("parent-token-button").textContent = data.parentTokenIssued ? "再発行" : "発行";
+
+    if (!data.paypayLinkSet || !data.tutorName) {
+      root.appendChild(el("p", "inline-error", "Script Properties の " + (!data.paypayLinkSet ? "PAYPAY_LINK" : "TUTOR_NAME") + " が未設定です。保護者アプリに支払い先・領収書の発行者が出ません"));
+    }
+    const paymentsByMonth = {};
+    data.payments.forEach(function (p) { paymentsByMonth[p.month] = p; });
+    B.monthsToShow(data.payments).forEach(function (month) {
+      const billing = B.monthBilling(data.lessons, data.gradeBase, month);
+      if (billing.items.length === 0 && !paymentsByMonth[month] && month !== B.monthOf(data.today)) return;
+      root.appendChild(window.BillingView.renderMonthCard(billing, paymentsByMonth[month] || null, {
+        role: "tutor",
+        onToggleLesson: toggleBillingLesson,
+        onConfirm: confirmPayment,
+        onCancelPayment: cancelPayment,
+        onReceipt: openReceipt
+      }));
+    });
+  }
+
+  async function billingAction(action, params) {
+    showError($("tutor-billing-error"), "");
+    try {
+      await api(action, Object.assign({ studentId: state.selectedId }, params));
+      await loadBilling();
+      // 授業の予定の画面も同じデータを見ているので揃える
+      loadLessons();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("tutor-billing-error"), err.message);
+    }
+  }
+
+  function toggleBillingLesson(item, cancelled) {
+    const L = window.Lessons;
+    const label = L.shortDate(item.date) + " " + L.timeRange(item);
+    if (!window.confirm(cancelled ? label + " の授業を「実施しなかった」にしますか？\n請求から外れます" : label + " の授業を「実施した」に戻しますか？")) return;
+    billingAction("tutorSetLessonCancelled", { ruleId: item.ruleId, date: item.date, cancelled: cancelled });
+  }
+
+  function confirmPayment(billing) {
+    const B = window.Billing;
+    const lessonDates = billing.items.filter(function (x) { return !x.cancelled; }).map(function (x) { return x.date; });
+    let text = B.monthLabel(billing.month) + " " + B.yen(billing.amountTotal) + "（" + lessonDates.length + "回）の入金を確認しましたか？\n保護者アプリに領収書が表示されます。";
+    if (!billing.closed) text = "今月はまだ終わっていません。予定の分も含めた金額で記録します。\n\n" + text;
+    if (!window.confirm(text)) return;
+    billingAction("tutorConfirmPayment", { payment: { month: billing.month, amount: billing.amountTotal, lessonDates: lessonDates, recipient: "" } });
+  }
+
+  function cancelPayment(payment) {
+    if (!window.confirm("領収書 No. " + payment.receiptNo + " の入金記録を取り消しますか？\n保護者アプリの領収書も消えます。")) return;
+    billingAction("tutorCancelPayment", { paymentId: payment.paymentId });
+  }
+
+  function openGradeSheet() {
+    const B = window.Billing;
+    const current = state.billing ? B.gradeOn(state.billing.gradeBase, state.billing.today) : null;
+    const box = $("grade-options");
+    box.replaceChildren();
+    B.GRADES.forEach(function (label) {
+      const b = el("button", "", label);
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(!!current && current.label === label));
+      b.addEventListener("click", async function () {
+        box.querySelectorAll("button").forEach(function (x) { x.disabled = true; });
+        try {
+          await api("tutorSetGrade", { studentId: state.selectedId, grade: label });
+          closeGradeSheet();
+          await loadBilling();
+        } catch (err) {
+          if (err.code !== "INVALID_TOKEN") showError($("grade-error"), err.message);
+          box.querySelectorAll("button").forEach(function (x) { x.disabled = false; });
+        }
+      });
+      box.appendChild(b);
+    });
+    showError($("grade-error"), "");
+    $("grade-panel").hidden = false;
+  }
+
+  function closeGradeSheet() {
+    $("grade-panel").hidden = true;
+  }
+
+  function openParentTokenSheet() {
+    const issued = !!(state.billing && state.billing.parentTokenIssued);
+    $("parent-token-lead").textContent = issued
+      ? "すでに発行済みです。再発行すると、前の合言葉は使えなくなります。"
+      : "保護者が保護者アプリにログインするための合言葉を発行します。";
+    $("parent-token-value").hidden = true;
+    $("parent-token-value").textContent = "";
+    $("parent-token-issue").hidden = false;
+    $("parent-token-issue").textContent = issued ? "再発行する" : "発行する";
+    showError($("parent-token-error"), "");
+    $("parent-token-panel").hidden = false;
+  }
+
+  function closeParentTokenSheet() {
+    $("parent-token-panel").hidden = true;
+  }
+
+  async function issueParentToken() {
+    const button = $("parent-token-issue");
+    button.disabled = true;
+    try {
+      const data = await api("tutorIssueParentToken", { studentId: state.selectedId });
+      // 平文はこの画面にだけ出る。閉じると二度と表示できない
+      $("parent-token-value").textContent = data.parentToken;
+      $("parent-token-value").hidden = false;
+      $("parent-token-lead").textContent = "この合言葉を保護者に伝えてください。この画面を閉じると二度と表示できません。\n保護者アプリ: " + location.origin + location.pathname.replace(/tutor\/?$/, "parent/");
+      button.hidden = true;
+      loadBilling();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("parent-token-error"), err.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function openReceipt(payment) {
+    const student = state.students.find(function (s) { return s.studentId === state.selectedId; });
+    $("receipt-body").replaceChildren(window.BillingView.renderReceipt(payment, student ? student.name : "", state.billing ? state.billing.tutorName : ""));
+    $("receipt-view").hidden = false;
+    document.body.classList.add("receipt-open");
+  }
+
+  function closeReceipt() {
+    $("receipt-view").hidden = true;
+    document.body.classList.remove("receipt-open");
+  }
+
   function startPolling() {
     stopPolling();
     if (document.visibilityState === "hidden") return;
@@ -1393,6 +1571,15 @@
     });
     $("add-goal").addEventListener("click", function () { openGoalForm(null); });
     $("add-rule").addEventListener("click", function () { openRuleForm(null); });
+    $("grade-button").addEventListener("click", openGradeSheet);
+    $("grade-close").addEventListener("click", closeGradeSheet);
+    $("grade-panel").addEventListener("click", function (e) { if (e.target === $("grade-panel")) closeGradeSheet(); });
+    $("parent-token-button").addEventListener("click", openParentTokenSheet);
+    $("parent-token-close").addEventListener("click", closeParentTokenSheet);
+    $("parent-token-panel").addEventListener("click", function (e) { if (e.target === $("parent-token-panel")) closeParentTokenSheet(); });
+    $("parent-token-issue").addEventListener("click", issueParentToken);
+    $("receipt-close").addEventListener("click", closeReceipt);
+    $("receipt-print").addEventListener("click", function () { window.print(); });
     $("rule-close").addEventListener("click", closeRuleForm);
     $("rule-panel").addEventListener("click", function (e) { if (e.target === $("rule-panel")) closeRuleForm(); });
     $("rule-form").addEventListener("submit", saveRule);

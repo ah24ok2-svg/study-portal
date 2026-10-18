@@ -11,6 +11,7 @@
 ```
 docs/        生徒アプリ。GitHub Pages の配信元（素のHTML/CSS/JS、ビルドなし）
 docs/tutor/  講師アプリ（spec.md §13）
+docs/parent/ 保護者アプリ（spec.md §16）
 gas/     Google Apps Script。clasp でデプロイする
 test/    GAS を Node で動かすモックとテスト（node test/run.js）
 spec.md  仕様書
@@ -33,6 +34,7 @@ spec.md  仕様書
 - テスト用の実物の答案PDF・画像
 
 IDや秘密情報は GAS の Script Properties に置く。ソースに直書きしない。
+領収書の発行者名（`TUTOR_NAME`）と PayPay の受け取りリンク（`PAYPAY_LINK`）も Script Properties に置く。
 `docs/config.js` に入れてよいのは `GAS_URL`、`GOOGLE_CLIENT_ID`、`FIREBASE_CONFIG`、`FIREBASE_VAPID_KEY`（どれも公開前提の値）だけ。
 通知の送信は講師本人の OAuth トークンで行い、サービスアカウント鍵は作らない（spec.md §13.6）。
 
@@ -82,10 +84,12 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 - エラーメッセージは生徒が読んで対処できる言葉にする。技術用語やスタックトレースを出さない
 - 生徒に見せる画面は幅375pxを基準にする
 - コメントは「なぜそうしたか」を書く。「何をしているか」はコードで読める
-- GAS側は `Code.js` に全部入れず、`auth.js` / `upload.js` / `messages.js` / `tutor.js` / `push.js` / `plan.js` / `lessons.js` に分ける
+- GAS側は `Code.js` に全部入れず、`auth.js` / `upload.js` / `messages.js` / `tutor.js` / `push.js` / `plan.js` / `lessons.js` / `billing.js` に分ける
 - 学習計画の日ごとの割り当ては保存しない。`docs/plan.js` が端末で計算する（spec.md §14）。生徒アプリと講師アプリで同じファイルを使い、計算を二重に書かない
 - 授業の予定も同じ。保存するのは毎週の授業と個別の変更だけで、日付の一覧は `docs/lessons.js` が展開する（spec.md §15）
 - PDF の表示は `docs/pdf-view.js` に1つだけ書き、生徒アプリの提出物ビューアと講師アプリのプレビューで共有する
+- 授業料も保存しない。学年と授業の予定から `docs/billing.js` が計算し、保存するのは入金の記録だけ（spec.md §16）。単価の変更は `docs/billing.js` の定数で行う
+- 保護者 API は `authenticateParent(req.parentToken)` を通す。保護者にやりとり・提出物・計画の写真を返さない
 - 講師 API は `authenticateTutor(req.tutorToken)` を必ず通す。生徒の `token` では講師 API を呼べないようにする
 
 ---
@@ -115,3 +119,4 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 - [x] v2 段階C: 講師端末へのプッシュ通知（iPad で受信を確認）
 - [ ] v3: 学習計画（目標からの逆算・カレンダー・6時の自動組み替え）。実機での確認待ち
 - [ ] v4: 授業の予定（毎週の授業・追加・休み・振替）。実機での確認待ち
+- [ ] v5: 保護者アプリ（計画の進み具合・授業料・PayPay・領収書）。実機での確認と Script Properties の設定待ち

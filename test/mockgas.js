@@ -149,6 +149,9 @@ if (require.main === module) {
   const s = m.gas.generateToken("テスト生徒A", "test-a");
   m.gas.generateToken("テスト生徒B", "test-b");
   m.gas.addTutorReply(s.studentId, "こんにちは。答案ができたら「提出」タブから送ってください。");
+  // 保護者アプリの確認用。本物では Script Properties に置く
+  m.props.TUTOR_NAME = "テスト講師";
+  m.props.PAYPAY_LINK = "https://qr.paypay.ne.jp/example";
   console.log("student token:", s.token, " studentId:", s.studentId);
   const results = new Map();
   const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png" };

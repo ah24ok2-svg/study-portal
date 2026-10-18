@@ -83,7 +83,7 @@ module.exports = function (t) {
   t("cancel idempotent", cancel().ok && sheets.lesson_changes.data.length === 2);
   t("cancel visible", call({ action: "getLessons", token: a.token }).data.changes[0].kind === "cancel");
   t("cancel wrong weekday", cancel({ date: add(day, 1) }).error?.code === "VALIDATION_ERROR");
-  t("cancel past", cancel({ date: add(day, -7) }).error?.code === "VALIDATION_ERROR");
+  t("cancel past beyond 3 months", cancel({ date: add(day, -98) }).error?.code === "VALIDATION_ERROR");
   t("cancel other student's rule", cancel({ studentId: b.studentId }).error?.code === "VALIDATION_ERROR");
   t("uncancel", cancel({ cancelled: false }).ok && sheets.lesson_changes.data.length === 1);
 
@@ -93,7 +93,7 @@ module.exports = function (t) {
   r = save({ note: "テスト前" });
   t("add extra", r.ok && r.data.lessonId.startsWith("lesson_"), r);
   const lid = r.data.lessonId;
-  t("extra past rejected", save({ date: add(today, -1) }).error?.code === "VALIDATION_ERROR");
+  t("extra past beyond 3 months rejected", save({ date: add(today, -100) }).error?.code === "VALIDATION_ERROR");
   t("extra too far", save({ date: add(today, 400) }).error?.code === "VALIDATION_ERROR");
   t("extra bad time", save({ endTime: "09:00" }).error?.code === "VALIDATION_ERROR");
   t("note too long", save({ note: "あ".repeat(41) }).error?.code === "VALIDATION_ERROR");
@@ -128,8 +128,8 @@ module.exports = function (t) {
   const c = m2.gas.generateToken("テスト生徒C", "test-c");
   const t2 = m2.tutorLogin();
   m2.call({ action: "tutorSaveLesson", tutorToken: t2, studentId: c.studentId, lesson: { date: add(today, 1), startTime: "10:00", endTime: "11:00" } });
-  m2.shiftDays(2);
-  t("past extra hidden", m2.call({ action: "getLessons", token: c.token }).data.changes.length === 0);
+  m2.shiftDays(100);
+  t("extra older than 3 months hidden", m2.call({ action: "getLessons", token: c.token }).data.changes.length === 0);
 
   // シートが無くても最初の利用で作られる
   const m3 = createMock();

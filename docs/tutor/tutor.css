@@ -102,14 +102,16 @@
 
 .segmented {
   grid-area: seg;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 3px; background: #ece7dc; border-radius: 12px;
 }
 .segmented button {
-  min-height: 38px; border: 0; border-radius: 9px;
+  min-height: 38px; padding: 0 2px; border: 0; border-radius: 9px;
   background: transparent; color: var(--ink-soft);
-  font-weight: 700; font-size: 14px; cursor: pointer;
+  font-weight: 700; font-size: 13px; white-space: nowrap; cursor: pointer;
 }
+/* 5つ並ぶとスマホ幅では件数が入らない */
+@media (max-width: 767px) { .segmented .count { display: none; } }
 .segmented button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(60, 38, 20, .12); }
 .count { color: var(--ink-soft); font-weight: 400; }
 
@@ -178,7 +180,7 @@
 /* 横に十分な幅があるときだけ、名前とタブを1行に並べる。タブが4つあるので、狭い iPad で並べると名前が切れる */
 @media (min-width: 1024px) {
   .detail-head { grid-template-columns: 1fr auto; grid-template-areas: "name seg"; }
-  .segmented { width: 360px; }
+  .segmented { width: 420px; }
   .segmented button { font-size: 13px; }
 }
 
@@ -241,14 +243,30 @@
 .rules-empty { padding: 4px 2px; }
 
 .lesson-actions { display: flex; gap: 6px; margin-left: auto; }
-.mini-btn {
-  min-height: 32px; padding: 0 10px;
-  border: 1.5px solid var(--line); border-radius: 8px;
-  background: var(--surface); color: var(--ink);
-  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
-}
-.mini-btn.danger { color: var(--danger); border-color: #f0c9c4; }
-.mini-btn:disabled { opacity: .45; cursor: default; }
 
 .weekday-pick button[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .lesson-form-lead { margin: 0 0 4px; padding: 10px 12px; background: var(--primary-soft); border-radius: 10px; font-size: 13px; }
+
+/* ---------- 請求（spec §16） ---------- */
+
+.billing-view { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.billing-inner { max-width: 640px; padding: 12px 16px calc(24px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 14px; }
+.billing-setup {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 12px 14px; background: var(--surface); border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(60, 38, 20, .05); font-size: 14px;
+}
+.billing-setup .link-button { margin: 0; font-weight: 700; color: var(--primary-ink); }
+.billing-setup-item { display: flex; align-items: center; gap: 8px; }
+.grade-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.grade-options button {
+  min-height: 42px; border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--surface); font: inherit; font-weight: 700; cursor: pointer;
+}
+.grade-options button[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+#parent-token-lead { white-space: pre-line; overflow-wrap: anywhere; }
+.token-result {
+  margin: 12px 0; padding: 14px; text-align: center;
+  background: var(--primary-soft); border-radius: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 22px; letter-spacing: .08em; user-select: all;
+}

@@ -625,3 +625,95 @@ body.viewer-open { overflow: hidden; }
 .tag-off { background: #f1ede6; color: var(--ink-soft); }
 .tag-next { background: var(--primary); color: var(--on-primary); }
 .lessons-hint { margin-top: 16px; }
+
+/* ---------- 授業料（spec §16）。保護者アプリと講師アプリで共有 ---------- */
+
+.bill-card {
+  padding: 14px 16px 16px;
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(60, 38, 20, .05);
+}
+.bill-card.is-due { box-shadow: inset 0 0 0 2px var(--primary), 0 1px 2px rgba(60, 38, 20, .05); }
+.bill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bill-month { margin: 0; font-size: 17px; }
+.bill-status { flex: none; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.9; background: var(--primary-soft); color: var(--primary-ink); }
+.is-paid .bill-status { background: #e7f5ec; color: #1f6b3a; }
+.is-due .bill-status { background: var(--danger-soft); color: var(--danger); }
+.bill-grade { margin: 4px 0 0; font-size: 13px; color: var(--ink-soft); }
+.bill-warn { color: var(--danger); }
+
+.bill-lessons { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.bill-lesson {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.bill-lesson-date { flex: none; width: 4.8em; font-weight: 700; }
+.bill-lesson-time { font-variant-numeric: tabular-nums; }
+.bill-lesson-state { flex: none; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.8; background: #f1ede6; color: var(--ink-soft); }
+.is-done .bill-lesson-state { background: #e7f5ec; color: #1f6b3a; }
+.is-planned .bill-lesson-state { background: var(--primary-soft); color: var(--primary-ink); }
+.is-cancelled .bill-lesson-date, .is-cancelled .bill-lesson-time { color: var(--ink-soft); text-decoration: line-through; }
+.bill-lesson-note { font-size: 12px; color: var(--ink-soft); }
+.bill-toggle { margin-left: auto; min-height: 28px; padding: 0 8px; font-size: 12px; }
+.bill-none { color: var(--ink-soft); }
+
+.bill-sum { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 12px 0 0; font-size: 14px; }
+.bill-sum dt { color: var(--ink-soft); }
+.bill-sum dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.bill-sum .bill-strong { font-size: 20px; font-weight: 700; }
+.bill-sum .bill-note { grid-column: 1 / -1; text-align: left; font-size: 12px; }
+
+.bill-actions { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.bill-actions .btn { text-decoration: none; }
+.bill-actions-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bill-hint { margin: 0; text-align: center; }
+.bill-receipt-no { margin: 0; font-size: 13px; color: var(--ink-soft); }
+
+.mini-btn {
+  min-height: 32px; padding: 0 10px;
+  border: 1.5px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.mini-btn.danger { color: var(--danger); border-color: #f0c9c4; }
+.mini-btn:disabled { opacity: .45; cursor: default; }
+
+/* ---------- 領収書 ---------- */
+
+.receipt-view {
+  position: fixed; inset: 0; z-index: 95;
+  display: flex; flex-direction: column;
+  background: #3a3632;
+}
+body.receipt-open { overflow: hidden; }
+.receipt-bar {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+  background: var(--surface);
+}
+.receipt-bar .link-button { margin: 0; }
+.receipt-bar .btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
+.receipt-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 12px calc(24px + var(--safe-bottom)); }
+.receipt {
+  max-width: 520px; margin: 0 auto; padding: 28px 24px 32px;
+  background: #fff; color: #222; border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+}
+.receipt-title { margin: 0 0 12px; text-align: center; font-size: 26px; letter-spacing: .4em; text-indent: .4em; }
+.receipt-meta { display: flex; justify-content: space-between; font-size: 13px; color: #555; }
+.receipt-to { margin: 20px 0 0; padding-bottom: 4px; border-bottom: 1px solid #222; font-size: 18px; }
+.receipt-amount { margin: 20px 0 0; padding: 8px 12px; border: 1px solid #222; text-align: center; font-size: 26px; font-weight: 700; }
+.receipt-for { margin: 16px 0 0; font-size: 14px; line-height: 1.7; }
+.receipt-line { margin: 4px 0 0; font-size: 14px; }
+.receipt-method { margin: 12px 0 0; font-size: 12px; color: #555; }
+.receipt-issuer { margin: 28px 0 0; text-align: right; font-size: 15px; white-space: pre-line; }
+
+@media print {
+  body.receipt-open > :not(.receipt-view), .receipt-bar { display: none !important; }
+  .receipt-view { position: static; background: none; }
+  .receipt-body { padding: 0; }
+  .receipt { box-shadow: none; max-width: none; }
+}

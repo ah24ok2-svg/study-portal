@@ -1,6 +1,6 @@
 /**
  * エントリポイントと共通ユーティリティ。
- * 各 action の処理は auth.js / messages.js / upload.js / tutor.js / push.js / plan.js / lessons.js にある。
+ * 各 action の処理は auth.js / messages.js / upload.js / tutor.js / push.js / plan.js / lessons.js / billing.js にある。
  */
 
 const SHEET = {
@@ -11,18 +11,20 @@ const SHEET = {
   GOAL_PROGRESS: "goal_progress",
   PLAN_PHOTOS: "plan_photos",
   LESSON_RULES: "lesson_rules",
-  LESSON_CHANGES: "lesson_changes"
+  LESSON_CHANGES: "lesson_changes",
+  PAYMENTS: "payments"
 };
 
 const HEADERS = {
-  students: ["student_id", "name", "name_slug", "token_hash", "folder_id", "active", "created_at"],
+  students: ["student_id", "name", "name_slug", "token_hash", "folder_id", "active", "created_at", "grade_base", "parent_token_hash"],
   messages: ["message_id", "student_id", "sender", "body", "created_at", "read_by_student", "read_by_tutor"],
   submissions: ["submission_id", "student_id", "file_id", "file_name", "mime_type", "size_bytes", "note", "created_at"],
   goals: ["goal_id", "student_id", "title", "start_page", "end_page", "start_date", "due_date", "rest_weekdays", "rest_dates", "active", "created_at", "updated_at", "spread_start"],
   goal_progress: ["progress_id", "goal_id", "student_id", "study_date", "through_page", "updated_at"],
   plan_photos: ["photo_id", "goal_id", "student_id", "study_date", "from_page", "to_page", "file_id", "created_at"],
   lesson_rules: ["rule_id", "student_id", "weekday", "start_time", "end_time", "start_date", "end_date", "created_at", "updated_at"],
-  lesson_changes: ["change_id", "student_id", "kind", "date", "start_time", "end_time", "rule_id", "note", "created_at", "updated_at"]
+  lesson_changes: ["change_id", "student_id", "kind", "date", "start_time", "end_time", "rule_id", "note", "created_at", "updated_at"],
+  payments: ["payment_id", "student_id", "month", "amount", "lesson_count", "lesson_dates", "receipt_no", "recipient", "paid_at", "created_at"]
 };
 
 // Sheets が "2026-10-01" を日付型に、"[0,6]" 以外の値を数値に変えないよう、書式なしテキストにする列（spec §14.4）
@@ -32,7 +34,9 @@ const TEXT_COLUMNS = {
   plan_photos: ["D:D"],
   // "19:00" も時刻型に変えられてしまう
   lesson_rules: ["D:D", "E:E", "F:F", "G:G"],
-  lesson_changes: ["D:D", "E:E", "F:F"]
+  lesson_changes: ["D:D", "E:E", "F:F"],
+  // "2026-10" も日付型に変えられてしまう
+  payments: ["C:C", "G:G"]
 };
 
 const LOCK_TIMEOUT_MS = 10 * 1000;
@@ -71,7 +75,14 @@ function doPost(e) {
       tutorDeleteLessonRule: handleTutorDeleteLessonRule,
       tutorSaveLesson: handleTutorSaveLesson,
       tutorDeleteLesson: handleTutorDeleteLesson,
-      tutorSetLessonCancelled: handleTutorSetLessonCancelled
+      tutorSetLessonCancelled: handleTutorSetLessonCancelled,
+      parentLogin: handleParentLogin,
+      parentGetSummary: handleParentGetSummary,
+      tutorGetBilling: handleTutorGetBilling,
+      tutorSetGrade: handleTutorSetGrade,
+      tutorIssueParentToken: handleTutorIssueParentToken,
+      tutorConfirmPayment: handleTutorConfirmPayment,
+      tutorCancelPayment: handleTutorCancelPayment
     };
     const handler = Object.prototype.hasOwnProperty.call(handlers, req.action) ? handlers[req.action] : null;
     if (!handler) return json(fail("VALIDATION_ERROR", "不正なリクエストです"));
@@ -126,6 +137,11 @@ class AppError extends Error {
     super(message);
     this.code = code;
   }
+}
+
+/** 未設定なら空文字。領収書の発行者名や PayPay のリンクなど、無くても他の機能が止まらない設定用 */
+function getOptionalProp(key) {
+  return PropertiesService.getScriptProperties().getProperty(key) || "";
 }
 
 function getProp(key) {

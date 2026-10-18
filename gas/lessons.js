@@ -8,6 +8,8 @@
 const LESSON_RULES_PER_STUDENT_MAX = 7;
 const LESSON_NOTE_MAX = 40;
 const LESSON_AHEAD_DAYS_MAX = 366;
+// 講師が過ぎた日の授業を直せる範囲。支払い期限が翌月末なので、先々月までの実施の有無を請求前に直せるようにする（spec §16）
+const LESSON_PAST_DAYS_MAX = 92;
 const TIME_KEY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** 授業の予定は暦どおりの日付で扱う（計画のような朝6時の切り替えはしない） */
@@ -78,12 +80,13 @@ function readChanges(studentId) {
 
 function lessonsPayload(studentId) {
   const today = lessonToday();
+  // 過ぎた日の変更も、請求の計算（spec §16）で使う範囲は返す
+  const since = new Date(new Date(today + "T00:00:00Z").getTime() - LESSON_PAST_DAYS_MAX * 86400000).toISOString().slice(0, 10);
   const rules = readRules(studentId);
   const ruleIds = {};
   rules.forEach(function (x) { ruleIds[x.ruleId] = true; });
   const changes = readChanges(studentId)
-    // 過ぎた日の変更は一覧に出ないので返さない
-    .filter(function (c) { return c.date >= today; })
+    .filter(function (c) { return c.date >= since; })
     .filter(function (c) {
       if (c.kind === "extra") return c.startTime && c.endTime;
       return c.kind === "cancel" && ruleIds[c.ruleId];
@@ -129,11 +132,11 @@ function validateLessonTimes(startTime, endTime) {
   if (endTime <= startTime) throw new AppError("VALIDATION_ERROR", "終了の時刻は開始より後にしてください");
 }
 
-/** 今日から1年先までの日付か。過ぎた日に授業を足しても一覧に出ないので受け付けない */
+/** 3か月前から1年先までの日付か。それより前は請求が済んでいるので直させない */
 function validateLessonDate(date, label) {
   if (!isValidDateKey(date)) throw new AppError("VALIDATION_ERROR", label + "を入力してください");
   const today = lessonToday();
-  if (date < today) throw new AppError("VALIDATION_ERROR", "過ぎた日は選べません");
+  if (daysBetween(date, today) > LESSON_PAST_DAYS_MAX) throw new AppError("VALIDATION_ERROR", "3か月より前の日は変更できません");
   if (daysBetween(today, date) > LESSON_AHEAD_DAYS_MAX) throw new AppError("VALIDATION_ERROR", "1年以内の日付にしてください");
 }
 

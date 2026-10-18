@@ -1,0 +1,17 @@
+/* 保護者アプリ固有のスタイル。色や部品は ../style.css を共有する */
+
+.role-badge {
+  display: inline-block; vertical-align: middle;
+  margin-left: 4px; padding: 0 8px;
+  background: var(--primary); color: var(--on-primary);
+  border-radius: 999px;
+  font-size: 12px; font-weight: 700; line-height: 1.7;
+  text-shadow: none;
+}
+
+.tabbar-2 { grid-template-columns: repeat(2, 1fr); }
+
+.billing-panel { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.billing-error { margin: 12px 16px 0; }
+.billing-root { padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 14px; }
+.billing-hint { margin-top: 8px; line-height: 1.6; }
