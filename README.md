@@ -17,7 +17,7 @@
 1. スプレッドシートで「拡張機能 → Apps Script」を開き、プロジェクトを作る
 2. 「プロジェクトの設定」でスクリプト ID を控え、「スクリプト プロパティ」に次を追加する
    - `SPREADSHEET_ID` / `ROOT_FOLDER_ID` / `NOTIFY_EMAIL`
-   - 保護者アプリ用（spec §16）: `TUTOR_NAME`（領収書の発行者名）、`PAYPAY_LINK`（PayPay アプリ「マイコード」を共有したときの URL）
+   - 保護者アプリ用の `TUTOR_NAME`（領収書の発行者名）と `PAYPAY_LINK`（PayPay の受け取りリンク）は、講師アプリの「請求」→「支払い先・発行者名の設定」から入れられる（spec §16）
 3. ローカルで clasp を使って反映する
    ```bash
    npm install -g @google/clasp

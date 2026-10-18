@@ -114,6 +114,7 @@
               <div class="billing-setup">
                 <span class="billing-setup-item">学年: <strong id="billing-grade">未設定</strong> <button id="grade-button" type="button" class="link-button">変更</button></span>
                 <span class="billing-setup-item">保護者の合言葉: <button id="parent-token-button" type="button" class="link-button">発行</button></span>
+                <span class="billing-setup-item"><button id="billing-settings-button" type="button" class="link-button">支払い先・発行者名の設定</button></span>
               </div>
               <div id="tutor-billing-root" class="billing-months"></div>
             </div>
@@ -247,6 +248,32 @@
     </div>
   </div>
 
+  <!-- 支払い先と領収書の発行者名（spec §16） -->
+  <div id="billing-settings-panel" class="sheet-backdrop" hidden>
+    <form id="billing-settings-form" class="sheet goal-sheet" role="dialog" aria-modal="true" aria-labelledby="billing-settings-title" novalidate>
+      <div class="sheet-head">
+        <h2 id="billing-settings-title">支払い先・発行者名</h2>
+        <button id="billing-settings-close" type="button" class="icon-button" aria-label="閉じる">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path d="M18 6L6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p class="hint" style="margin:0 0 4px">すべての生徒の保護者アプリに共通で使われます</p>
+
+      <label class="field-label" for="settings-tutor-name">領収書の発行者名</label>
+      <input id="settings-tutor-name" class="input" type="text" maxlength="60" placeholder="例: オンライン家庭教師 ○○">
+
+      <label class="field-label" for="settings-paypay-link">PayPay の受け取りリンク</label>
+      <input id="settings-paypay-link" class="input" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://qr.paypay.ne.jp/...">
+      <p class="hint">PayPay アプリの「マイコード」→「共有」で出てくる URL を貼り付けてください</p>
+      <div id="settings-qr-preview" class="settings-qr-preview"></div>
+
+      <p id="billing-settings-error" class="inline-error" role="alert" hidden></p>
+      <div class="sheet-actions">
+        <button id="billing-settings-save" type="submit" class="btn btn-primary btn-block">保存</button>
+      </div>
+    </form>
+  </div>
+
   <!-- 保護者の合言葉（spec §16） -->
   <div id="parent-token-panel" class="sheet-backdrop" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="parent-token-title">
@@ -355,6 +382,7 @@
     </form>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <script src="../config.js"></script>
   <script src="../pdf-view.js"></script>
   <script src="../lessons.js"></script>

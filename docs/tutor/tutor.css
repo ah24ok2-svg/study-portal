@@ -265,6 +265,9 @@
 }
 .grade-options button[aria-checked="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 #parent-token-lead { white-space: pre-line; overflow-wrap: anywhere; }
+.settings-qr-preview { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--ink-soft); }
+.settings-qr-preview:empty { display: none; }
+.settings-qr-preview .bill-qr { margin: 0; width: 140px; height: 140px; }
 .token-result {
   margin: 12px 0; padding: 14px; text-align: center;
   background: var(--primary-soft); border-radius: 12px;

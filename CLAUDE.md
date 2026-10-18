@@ -19,7 +19,7 @@ spec.md  仕様書
 
 - フロントは `docs/` に置く。GitHub Pages のブランチ配信はルートか `/docs` しか選べないため、名前を変えない
 - リポジトリは**公開**。GitHub Pages を無料プランで使うための必須条件
-- フレームワークは使わない。依存は CDN の jsPDF と pdf.js、講師アプリの通知用に Firebase Messaging（gstatic の compat 版）のみ（講師のログインは Google の OAuth 画面へのリダイレクトで行い、SDK は読まない）
+- フレームワークは使わない。依存は CDN の jsPDF と pdf.js、保護者アプリの PayPay 用 QR コードに qrcode-generator、講師アプリの通知用に Firebase Messaging（gstatic の compat 版）のみ（講師のログインは Google の OAuth 画面へのリダイレクトで行い、SDK は読まない）
 
 ---
 
@@ -119,4 +119,4 @@ clasp deploy        # 新バージョンをデプロイ（URLは変わらない�
 - [x] v2 段階C: 講師端末へのプッシュ通知（iPad で受信を確認）
 - [ ] v3: 学習計画（目標からの逆算・カレンダー・6時の自動組み替え）。実機での確認待ち
 - [ ] v4: 授業の予定（毎週の授業・追加・休み・振替）。実機での確認待ち
-- [ ] v5: 保護者アプリ（計画の進み具合・授業料・PayPay・領収書）。実機での確認と Script Properties の設定待ち
+- [ ] v5: 保護者アプリ（計画の進み具合・授業料・PayPay・領収書）。実機での確認と、講師アプリ「請求」での支払い先・発行者名の設定待ち

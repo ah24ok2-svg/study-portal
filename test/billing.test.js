@@ -100,6 +100,17 @@ module.exports = function (t) {
   t("tutor billing other student", call({ action: "tutorGetBilling", tutorToken: tt, studentId: b2.studentId }).data.parentTokenIssued === false);
   t("tutor billing needs tutor", call({ action: "tutorGetBilling", tutorToken: pt, studentId: a.studentId }).error?.code === "INVALID_TOKEN");
 
+  // 支払い先・発行者名の設定（Script Properties）
+  m.cache.clear();
+  r = call({ action: "tutorSaveBillingSettings", tutorToken: tt, tutorName: "  テスト講師2 ", paypayLink: "https://qr.paypay.ne.jp/p2p01_test" });
+  t("save settings", r.ok && m.props.TUTOR_NAME === "テスト講師2" && m.props.PAYPAY_LINK === "https://qr.paypay.ne.jp/p2p01_test", r);
+  t("settings visible to parent", call({ action: "parentGetSummary", parentToken: pt }).data.tutorName === "テスト講師2");
+  t("reject non-paypay link", call({ action: "tutorSaveBillingSettings", tutorToken: tt, tutorName: "x", paypayLink: "https://example.com/paypay.ne.jp/x" }).error?.code === "VALIDATION_ERROR" && m.props.PAYPAY_LINK === "https://qr.paypay.ne.jp/p2p01_test");
+  t("reject http link", call({ action: "tutorSaveBillingSettings", tutorToken: tt, tutorName: "x", paypayLink: "http://qr.paypay.ne.jp/x" }).error?.code === "VALIDATION_ERROR");
+  t("settings need tutor", call({ action: "tutorSaveBillingSettings", tutorToken: pt, tutorName: "x", paypayLink: "" }).error?.code === "INVALID_TOKEN");
+  t("clear link", call({ action: "tutorSaveBillingSettings", tutorToken: tt, tutorName: "テスト講師", paypayLink: "" }).ok && !m.props.PAYPAY_LINK);
+  m.props.PAYPAY_LINK = "https://qr.paypay.ne.jp/example";
+
   // 再発行で前の合言葉は無効
   m.cache.clear();
   const pt2 = call({ action: "tutorIssueParentToken", tutorToken: tt, studentId: a.studentId }).data.parentToken;

@@ -22,6 +22,28 @@
     return b;
   }
 
+  /**
+   * PayPay の受け取りリンクを QR コードにする（qrcode-generator、CDN）。
+   * 保護者が別の端末（家族のスマホなど）で払うときに、リンクを送らなくても読み取れるようにするため。
+   * ライブラリが読めていなければ null（リンクのボタンだけで支払える）
+   */
+  function renderQr(link) {
+    if (typeof root.qrcode !== "function" || !link) return null;
+    try {
+      const qr = root.qrcode(0, "M");
+      qr.addData(link);
+      qr.make();
+      const box = el("div", "bill-qr");
+      // 自前の URL からライブラリが作った SVG なので innerHTML でよい
+      box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+      const svg = box.querySelector("svg");
+      if (svg) svg.setAttribute("aria-label", "PayPay の受け取り用 QR コード");
+      return box;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /** "11/30(月)" */
   function shortDate(key) {
     return L.shortDate(key);
@@ -114,6 +136,14 @@
           actions.appendChild(el("p", "hint bill-hint", billing.closed
             ? "PayPay が開いたら " + B.yen(billing.amountTotal) + " を送ってください"
             : "月末に金額が確定してからお支払いください"));
+          // 月が終わった分だけ QR も出す（今月の分まで出すと、見込み額を送ってしまう）
+          if (billing.closed) {
+            const qr = renderQr(o.paypayLink);
+            if (qr) {
+              actions.appendChild(qr);
+              actions.appendChild(el("p", "hint bill-hint", "別のスマホで払うときは、PayPay アプリの「スキャン」でこの QR コードを読み取ってください"));
+            }
+          }
         } else {
           actions.appendChild(el("p", "hint bill-hint", "お支払い方法は先生にご確認ください"));
         }
@@ -156,5 +186,5 @@
     return box;
   }
 
-  root.BillingView = { renderMonthCard: renderMonthCard, renderReceipt: renderReceipt };
+  root.BillingView = { renderMonthCard: renderMonthCard, renderReceipt: renderReceipt, renderQr: renderQr };
 })(self);

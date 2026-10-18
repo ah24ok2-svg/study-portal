@@ -668,6 +668,8 @@ body.viewer-open { overflow: hidden; }
 .bill-actions .btn { text-decoration: none; }
 .bill-actions-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .bill-hint { margin: 0; text-align: center; }
+.bill-qr { margin: 4px auto 0; width: 168px; height: 168px; padding: 4px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+.bill-qr svg { display: block; width: 100%; height: 100%; }
 .bill-receipt-no { margin: 0; font-size: 13px; color: var(--ink-soft); }
 
 .mini-btn {

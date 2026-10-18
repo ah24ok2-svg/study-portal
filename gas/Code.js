@@ -79,6 +79,7 @@ function doPost(e) {
       parentLogin: handleParentLogin,
       parentGetSummary: handleParentGetSummary,
       tutorGetBilling: handleTutorGetBilling,
+      tutorSaveBillingSettings: handleTutorSaveBillingSettings,
       tutorSetGrade: handleTutorSetGrade,
       tutorIssueParentToken: handleTutorIssueParentToken,
       tutorConfirmPayment: handleTutorConfirmPayment,

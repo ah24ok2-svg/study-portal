@@ -9,6 +9,9 @@ const PAYMENT_AMOUNT_MAX = 1000000;
 const PAYMENT_LESSONS_MAX = 62;
 const RECIPIENT_MAX = 40;
 const MONTH_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const TUTOR_NAME_MAX = 60;
+// PayPay の受け取りリンク（マイコードの共有 URL）。別のサイトへ誘導するリンクを保存できないよう、PayPay のドメインだけ受け付ける
+const PAYPAY_LINK_PATTERN = /^https:\/\/([a-z0-9-]+\.)?paypay\.ne\.jp\/[^\s<>"']{1,200}$/;
 
 /** 年度（4月始まり）。学年を "2026:中1" の形で保存するのに使う */
 function schoolYearOf(dateKey) {
@@ -111,9 +114,28 @@ function handleTutorGetBilling(req) {
     lessons: lessonsPayload(student.studentId),
     payments: readPayments(student.studentId).map(publicPayment),
     tutorName: getOptionalProp("TUTOR_NAME"),
+    paypayLink: getOptionalProp("PAYPAY_LINK"),
     paypayLinkSet: !!getOptionalProp("PAYPAY_LINK"),
     today: lessonToday()
   });
+}
+
+/**
+ * 領収書の発行者名と PayPay の受け取りリンクを Script Properties に保存する。
+ * 講師が iPad から設定できるようにするため。値はソースに書かない（spec §16）
+ */
+function handleTutorSaveBillingSettings(req) {
+  authenticateTutor(req.tutorToken);
+  const name = (typeof req.tutorName === "string" ? req.tutorName : "").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+  const link = (typeof req.paypayLink === "string" ? req.paypayLink : "").trim();
+  if (Array.from(name).length > TUTOR_NAME_MAX) throw new AppError("VALIDATION_ERROR", "発行者名は" + TUTOR_NAME_MAX + "文字以内にしてください");
+  if (link && !PAYPAY_LINK_PATTERN.test(link)) {
+    throw new AppError("VALIDATION_ERROR", "PayPay のリンクは https://qr.paypay.ne.jp/ で始まる URL を入れてください（PayPay アプリの「マイコード」→ 共有）");
+  }
+  const props = PropertiesService.getScriptProperties();
+  if (name) props.setProperty("TUTOR_NAME", name); else props.deleteProperty("TUTOR_NAME");
+  if (link) props.setProperty("PAYPAY_LINK", link); else props.deleteProperty("PAYPAY_LINK");
+  return ok({ tutorName: name, paypayLink: link });
 }
 
 /** 学年を設定する。保存は "2026:中1" の形（今年度の学年）。4月になれば端末側で1つ上がる */

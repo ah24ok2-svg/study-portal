@@ -220,6 +220,7 @@
     state.billing = null;
     closeGradeSheet();
     closeParentTokenSheet();
+    closeBillingSettings();
     closeReceipt();
     closeRuleForm();
     closeLessonForm();
@@ -1401,7 +1402,7 @@
     $("parent-token-button").textContent = data.parentTokenIssued ? "再発行" : "発行";
 
     if (!data.paypayLinkSet || !data.tutorName) {
-      root.appendChild(el("p", "inline-error", "Script Properties の " + (!data.paypayLinkSet ? "PAYPAY_LINK" : "TUTOR_NAME") + " が未設定です。保護者アプリに支払い先・領収書の発行者が出ません"));
+      root.appendChild(el("p", "inline-error", (!data.paypayLinkSet ? "PayPay の受け取りリンク" : "領収書の発行者名") + "が未設定です。「支払い先・発行者名の設定」から入れると、保護者アプリに支払い先と領収書の発行者が出ます"));
     }
     const paymentsByMonth = {};
     data.payments.forEach(function (p) { paymentsByMonth[p.month] = p; });
@@ -1517,6 +1518,48 @@
     }
   }
 
+  function openBillingSettings() {
+    const data = state.billing || {};
+    $("settings-tutor-name").value = data.tutorName || "";
+    $("settings-paypay-link").value = data.paypayLink || "";
+    showError($("billing-settings-error"), "");
+    renderSettingsQr();
+    $("billing-settings-panel").hidden = false;
+  }
+
+  function closeBillingSettings() {
+    $("billing-settings-panel").hidden = true;
+  }
+
+  /** 貼り付けたリンクをその場で QR にして、PayPay アプリで読めるか自分で確かめられるようにする */
+  function renderSettingsQr() {
+    const box = $("settings-qr-preview");
+    box.replaceChildren();
+    const link = $("settings-paypay-link").value.trim();
+    if (!/^https:\/\/([a-z0-9-]+\.)?paypay\.ne\.jp\//.test(link)) return;
+    const qr = window.BillingView.renderQr(link);
+    if (!qr) return;
+    box.appendChild(qr);
+    box.appendChild(el("span", "", "保護者アプリにはこの QR コードとリンクが出ます"));
+  }
+
+  async function saveBillingSettings(event) {
+    event.preventDefault();
+    const button = $("billing-settings-save");
+    button.disabled = true;
+    button.textContent = "保存しています…";
+    try {
+      await api("tutorSaveBillingSettings", { tutorName: $("settings-tutor-name").value, paypayLink: $("settings-paypay-link").value });
+      closeBillingSettings();
+      await loadBilling();
+    } catch (err) {
+      if (err.code !== "INVALID_TOKEN") showError($("billing-settings-error"), err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = "保存";
+    }
+  }
+
   function openReceipt(payment) {
     const student = state.students.find(function (s) { return s.studentId === state.selectedId; });
     $("receipt-body").replaceChildren(window.BillingView.renderReceipt(payment, student ? student.name : "", state.billing ? state.billing.tutorName : ""));
@@ -1572,6 +1615,11 @@
     $("add-goal").addEventListener("click", function () { openGoalForm(null); });
     $("add-rule").addEventListener("click", function () { openRuleForm(null); });
     $("grade-button").addEventListener("click", openGradeSheet);
+    $("billing-settings-button").addEventListener("click", openBillingSettings);
+    $("billing-settings-close").addEventListener("click", closeBillingSettings);
+    $("billing-settings-panel").addEventListener("click", function (e) { if (e.target === $("billing-settings-panel")) closeBillingSettings(); });
+    $("billing-settings-form").addEventListener("submit", saveBillingSettings);
+    $("settings-paypay-link").addEventListener("input", renderSettingsQr);
     $("grade-close").addEventListener("click", closeGradeSheet);
     $("grade-panel").addEventListener("click", function (e) { if (e.target === $("grade-panel")) closeGradeSheet(); });
     $("parent-token-button").addEventListener("click", openParentTokenSheet);
